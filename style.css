@@ -69,6 +69,21 @@ button:hover {
     background-color: #ddd;
     padding: 10px;
     border-radius: 5px;
+    cursor: pointer;
+    position: relative;
+}
+
+.players-list li:hover {
+    background-color: #ccc;
+}
+
+.remove-button {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #e53935;
+    cursor: pointer;
 }
 
 #scoreboard {
@@ -100,7 +115,7 @@ button:hover {
     width: 80%;
     max-width: 400px;
     padding: 10px;
-    background-color: #e53935; /* Czerwony kolor */
+    background-color: #e53935;
     color: #fff;
     border: none;
     border-radius: 5px;
@@ -108,5 +123,5 @@ button:hover {
 }
 
 #reset-container button:hover {
-    background-color: #d32f2f; /* Ciemniejszy czerwony kolor po najechaniu myszą */
+    background-color: #d32f2f;
 }
