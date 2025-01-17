@@ -1,105 +1,143 @@
-// Funkcja do inicjalizacji stanu na podstawie danych w localStorage
 function initializeState() {
-    // Pobierz zapisane dane z localStorage
     var team1Score = localStorage.getItem('team1Score') || '0';
     var team2Score = localStorage.getItem('team2Score') || '0';
 
-    // Ustaw początkowy stan wyników
     document.getElementById('team1-score').textContent = team1Score;
     document.getElementById('team2-score').textContent = team2Score;
 
-    // Pobierz zapisane dane o zawodnikach z localStorage
     initializePlayers('team1', 'player1', 'team1-list');
     initializePlayers('team2', 'player2', 'team2-list');
 }
 
-// Funkcja do inicjalizacji listy zawodników na podstawie danych w localStorage
 function initializePlayers(team, inputId, listId) {
     var playersList = document.getElementById(listId);
-    playersList.innerHTML = ''; // Wyczyść listę przed dodaniem zawodników
+    playersList.innerHTML = '';
 
-    // Pobierz zapisane dane o zawodnikach z localStorage
     var playersData = JSON.parse(localStorage.getItem(team + 'Players')) || [];
 
-    // Dodaj zawodników do listy
     playersData.forEach(function (player) {
         var listItem = document.createElement('li');
-        listItem.textContent = player;
+        listItem.textContent = player.name + ' (' + player.points + ')';
+        listItem.onclick = function () {
+            removePlayer(team, player.name);
+        };
         playersList.appendChild(listItem);
     });
 }
 
-// Funkcja do zapisywania danych o zawodnikach do localStorage
-function savePlayers(team, playerName) {
-    // Pobierz istniejące dane o zawodnikach z localStorage
+
+function savePlayers(team, playerName, points = 1) {
     var playersData = JSON.parse(localStorage.getItem(team + 'Players')) || [];
+    var existingPlayer = playersData.find(player => player.name === playerName);
 
-    // Dodaj nowego zawodnika do listy
-    playersData.push(playerName);
+    if (existingPlayer) {
+        existingPlayer.points += points;
+    } else {
+        playersData.push({ name: playerName, points: points });
+    }
 
-    // Zapisz zaktualizowane dane do localStorage
     localStorage.setItem(team + 'Players', JSON.stringify(playersData));
 }
 
-// Funkcja do zapisywania danych o wynikach do localStorage
+
 function saveScores(team1Score, team2Score) {
-    // Zapisz aktualne wyniki do localStorage
     localStorage.setItem('team1Score', team1Score);
     localStorage.setItem('team2Score', team2Score);
 }
 
-// Funkcja do dodawania zawodnika
 function addPlayer(team) {
     var playerNameInput = document.getElementById('player' + team.charAt(team.length - 1));
     var playerName = playerNameInput.value;
 
     if (playerName) {
         var playersList = document.getElementById(team + '-list');
-        var existingPlayer = Array.from(playersList.children).find(function (player) {
-            return player.textContent.split(' ')[0] === playerName;
-        });
+        var playersData = JSON.parse(localStorage.getItem(team + 'Players')) || [];
+        var existingPlayer = playersData.find(player => player.name === playerName);
 
         if (existingPlayer) {
-            var count = parseInt(existingPlayer.textContent.match(/\((\d+)\)/)?.[1]) || 1;
-            existingPlayer.textContent = playerName + ' (' + (count + 1) + ')';
+            // Zwiększ punkty istniejącego zawodnika
+            existingPlayer.points += 1;
+            var listItem = Array.from(playersList.children).find(player => player.textContent.startsWith(playerName));
+            if (listItem) {
+                listItem.textContent = playerName + ' (' + existingPlayer.points + ')';
+            }
         } else {
+            // Dodaj nowego zawodnika
             var listItem = document.createElement('li');
-            listItem.textContent = playerName;
+            listItem.textContent = playerName + ' (1)';
+            listItem.onclick = function () {
+                removePlayer(team, playerName);
+            };
             playersList.appendChild(listItem);
-
-            // Zapisz zawodnika do localStorage
-            savePlayers(team, playerName);
+            playersData.push({ name: playerName, points: 1 });
         }
 
+        // Zapisz zaktualizowaną listę zawodników w localStorage
+        localStorage.setItem(team + 'Players', JSON.stringify(playersData));
+
+        // Zaktualizuj wynik drużyny
         updateScore(team);
 
+        // Wyczyść pole tekstowe
         playerNameInput.value = '';
     } else {
         alert('Proszę wpisać imię zawodnika.');
     }
 }
 
-// Funkcja do aktualizacji wyniku
-function updateScore(team) {
+
+
+function removePlayer(team, playerName) {
+    var playersList = document.getElementById(team + '-list');
+    var playersData = JSON.parse(localStorage.getItem(team + 'Players')) || [];
+
+    var playerIndex = playersData.findIndex(player => player.name === playerName);
+    if (playerIndex !== -1) {
+        var player = playersData[playerIndex];
+        if (player.points > 1) {
+            player.points -= 1;
+            var listItem = Array.from(playersList.children).find(playerItem => playerItem.textContent.startsWith(playerName));
+            if (listItem) {
+                listItem.textContent = playerName + ' (' + player.points + ')';
+            }
+        } else {
+            playersData.splice(playerIndex, 1);
+            var listItem = Array.from(playersList.children).find(playerItem => playerItem.textContent.startsWith(playerName));
+            if (listItem) {
+                playersList.removeChild(listItem);
+            }
+        }
+        localStorage.setItem(team + 'Players', JSON.stringify(playersData));
+        updateScore(team, -1);
+    }
+}
+
+
+function updateScore(team, scoreChange = 1) {
     var teamScore = document.getElementById(team + '-score');
     var currentScore = parseInt(teamScore.textContent);
-    teamScore.textContent = currentScore + 1;
-
-    // Zapisz aktualne wyniki do localStorage
+    teamScore.textContent = currentScore + scoreChange;
     saveScores(document.getElementById('team1-score').textContent, document.getElementById('team2-score').textContent);
 }
 
-// Funkcja do resetowania danych
+function updateLocalStorage(team, playerName, scoreChange) {
+    var playersData = JSON.parse(localStorage.getItem(team + 'Players')) || [];
+    var updatedPlayersData = playersData.filter(function (player) {
+        return player !== playerName;
+    });
+    localStorage.setItem(team + 'Players', JSON.stringify(updatedPlayersData));
+
+    var currentScore = parseInt(localStorage.getItem(team + 'Score')) || 0;
+    var updatedScore = currentScore + scoreChange;
+    localStorage.setItem(team + 'Score', updatedScore.toString());
+}
+
 function resetData() {
-    // Wyczyść dane w localStorage
     localStorage.removeItem('team1Score');
     localStorage.removeItem('team2Score');
     localStorage.removeItem('team1Players');
     localStorage.removeItem('team2Players');
-
-    // Przeładuj stronę
     location.reload();
 }
 
-// Wywołaj funkcję inicjalizacji stanu przy ładowaniu strony
 initializeState();
