@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,3 +33,39 @@
     <script src="script.js"></script>
 </body>
 </html>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Scoreboard</title>
+</head>
+<body>
+    <h3>Team 1 <span id="team1-score">0</span>:<span id="team2-score">0</span> Team 2</h3>
+    
+    <div id="teams-container">
+        <div class="team-container">
+            <label for="player1">Team 1:</label>
+            <input type="text" id="player1" placeholder="Imię zawodnika">
+            <button onclick="addPlayer('team1')">Dodaj zawodnika</button>
+            <ul id="team1-list" class="players-list"></ul>
+        </div>
+
+        <div class="team-container">
+            <label for="player2">Team 2:</label>
+            <input type="text" id="player2" placeholder="Imię zawodnika">
+            <button onclick="addPlayer('team2')">Dodaj zawodnika</button>
+            <ul id="team2-list" class="players-list"></ul>
+        </div>
+    </div>
+
+    <div id="reset-container">
+        <button onclick="resetData()">Reset</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+>>>>>>> 538c371620c41a8b463a9af182e810fdb21deab3
