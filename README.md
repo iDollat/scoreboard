@@ -13,15 +13,19 @@ Licznik wyniku meczu piłkarskiego na telefon: strzelcy, zmiany drużyn, podsumo
 4. **Historia / Statystyki**: wszystkie mecze oraz tabela sezonu (mecze, W/R/P, gole, średnia, punkty, forma) i rekordy.
 
 ## Dane
-Wszystko jest zapisane w przeglądarce na urządzeniu (localStorage). W zakładce **Więcej** możesz:
+W zakładce **Więcej** możesz:
 - wyeksportować kopię do pliku i zaimportować ją na innym telefonie (z łączeniem danych),
 - rozpocząć nowy sezon,
 - poprawić imiona zawodników i połączyć duplikaty.
 
-## Wersja testowa (/update)
-W folderze `update/` jest wersja beta z zapisami na mecz, układaniem składów i przygotowaniem pod wspólną bazę
-(kod źródłowy na gałęzi `feature/zapisy-i-baza`). Działa pod adresem `…/scoreboard/update/`.
-Obie wersje korzystają z tych samych danych w przeglądarce, więc w becie widać prawdziwych zawodników i statystyki.
+## Zapisy na mecz i składy
+- **Zapisy**: organizator planuje mecz (data, miejsce, limit) i wysyła **link do zapisów**. Zawodnicy klikają *Gram / Może / Nie gram*, a osoby ponad limit trafiają na listę rezerwową. Organizator może też dopisać kogoś ręcznie.
+- **Składy**: siła zawodników jest liczona z wyników, a przycisk *Wyrównaj* dzieli ich na równe drużyny. Jednym kliknięciem startuje mecz z tymi składami.
+- Tryb organizatora włącza się w zakładce **Więcej**.
+
+## Wspólna baza (Convex)
+Zawodnicy, mecze, statystyki i zapisy są wspólne dla wszystkich, a kopia na telefonie pozwala działać bez internetu.
+Szczegóły i wgrywanie funkcji serwera: [docs/BAZA.md](docs/BAZA.md). Stary adres `/update/` przekierowuje na stronę główną.
 
 ## Hosting
 Strona jest statyczna (HTML + CSS + JS, bez budowania), więc działa na darmowym GitHub Pages:

@@ -1,0 +1,12 @@
+{
+  "name": "scoreboard",
+  "private": true,
+  "description": "Scoreboard – backend Convex (frontend to statyczne pliki w katalogu głównym)",
+  "scripts": {
+    "deploy": "convex deploy",
+    "dev": "convex dev"
+  },
+  "dependencies": {
+    "convex": "^1.50.0"
+  }
+}

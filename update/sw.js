@@ -1,31 +1,12 @@
-// Service worker: najpierw sieć (świeża wersja), a bez internetu – kopia z pamięci.
-// Nazwa pamięci zależy od ścieżki – wersja główna i /update/ nie kasują sobie nawzajem plików.
-const PREFIX = 'scoreboard:' + self.registration.scope + ':';
-const CACHE = PREFIX + 'v2.2.0';
-const ASSETS = ['./', './index.html', './style.css', './config.js', './store.js', './zapisy.js', './app.js', './manifest.webmanifest', './icon.svg'];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
-
+// Stara wersja beta – ten service worker tylko sprząta po sobie i się wyrejestrowuje.
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
+  const prefix = 'scoreboard:' + self.registration.scope + ':';
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith(PREFIX) || k.startsWith('scoreboard-v')) && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('./index.html')))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(prefix)).map((k) => caches.delete(k))))
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll())
+      .then((clients) => clients.forEach((c) => c.navigate(c.url)))
   );
 });

@@ -1,8 +1,8 @@
 // Service worker: najpierw sieć (świeża wersja), a bez internetu – kopia z pamięci.
 // Nazwa pamięci zależy od ścieżki – wersja główna i /update/ nie kasują sobie nawzajem plików.
 const PREFIX = 'scoreboard:' + self.registration.scope + ':';
-const CACHE = PREFIX + 'v2.0.1';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon.svg'];
+const CACHE = PREFIX + 'v3.0.0';
+const ASSETS = ['./', './index.html', './style.css', './config.js', './store.js', './zapisy.js', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
