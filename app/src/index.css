@@ -492,3 +492,14 @@ a.link { text-decoration: none; }
 /* Znaczek „Powered by Netlify” (darmowy plan) ma własny pasek pod nawigacją */
 html.has-host-badge { --badge: 72px; }
 html.has-host-badge .tabbar { grid-template-rows: var(--tabbar-h); align-content: start; }
+
+/* Zapisy: wybór z listy / pierwszy raz */
+.seg-full { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; }
+.seg-full button { width: 100%; }
+.picker-search { margin-bottom: 10px; }
+.picker-chips { max-height: 260px; overflow-y: auto; margin-bottom: 12px; padding: 2px; }
+.new-player { display: grid; grid-template-columns: 1fr 96px; gap: 10px; margin-bottom: 10px; }
+.new-player label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.new-player .initial { text-align: center; text-transform: uppercase; }
+.me-card .btn.big:disabled { opacity: .5; }
+.game-full { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: #facc15; }

@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { signupStatus, team } from "./schema";
-import { findOrCreatePlayer, requireAdmin } from "./lib";
+import { cleanName, findOrCreatePlayer, nameKey, requireAdmin } from "./lib";
 
 const gameInput = {
   date: v.string(),
@@ -84,10 +84,22 @@ export const cancel = mutation({
 
 /* Zapis zawodnika – publiczny, bez konta. Zwraca id zawodnika (telefon go zapamiętuje). */
 export const signup = mutation({
-  args: { gameId: v.id("games"), name: v.optional(v.string()), playerId: v.optional(v.id("players")), status: signupStatus },
-  handler: async (ctx, { gameId, name, playerId, status }) => {
+  args: {
+    gameId: v.id("games"),
+    name: v.optional(v.string()),
+    playerId: v.optional(v.id("players")),
+    newPlayer: v.optional(v.boolean()), // „pierwszy raz” – imię nie może należeć do kogoś innego
+    status: signupStatus,
+  },
+  handler: async (ctx, { gameId, name, playerId, newPlayer, status }) => {
     const g = await ctx.db.get(gameId);
     if (!g || g.status !== "open") throw new Error("Zapisy na ten mecz są zamknięte.");
+    if (newPlayer) {
+      const clean = cleanName(name ?? "");
+      if (!clean) throw new Error("Podaj imię.");
+      const taken = await ctx.db.query("players").withIndex("by_key", (q) => q.eq("key", nameKey(clean))).first();
+      if (taken) throw new Error(`Zawodnik „${taken.name}” już jest na liście – wybierz siebie w zakładce „Grałem już” albo dodaj pierwszą literę nazwiska.`);
+    }
     const pid = playerId && (await ctx.db.get(playerId)) ? playerId : await findOrCreatePlayer(ctx, name ?? "");
     const s = await ctx.db.query("signups").withIndex("by_game_player", (q) => q.eq("gameId", gameId).eq("playerId", pid)).unique();
     if (s) {

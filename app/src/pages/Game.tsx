@@ -6,8 +6,9 @@ import type { Doc, Id } from '../../convex/_generated/dataModel';
 import { useAdmin } from '../lib/admin';
 import { getMe, setMe, usePlayers } from '../lib/data';
 import { Empty, Loading, Sheet, errorText, useUI } from '../lib/ui';
-import { buzz, gameWhen, nameKey, plural, shareOrCopy } from '../lib/format';
+import { buzz, gameWhen, plural, shareOrCopy } from '../lib/format';
 import { GameForm } from './Games';
+import SignupPicker from './SignupPicker';
 
 type Status = 'in' | 'maybe' | 'out';
 const LABEL: Record<Status, string> = { in: '✅ Gram', maybe: '🤔 Może', out: '❌ Nie gram' };
@@ -23,7 +24,6 @@ export default function Game() {
   const cancel = useMutation(api.games.cancel);
   const nav = useNavigate();
   const [meId, setMeId] = useState(getMe);
-  const [name, setName] = useState('');
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
 
@@ -43,11 +43,19 @@ export default function Game() {
   const open = game.status === 'open';
   const link = `${location.origin}/terminy/${game._id}`;
 
-  const doSignup = async (status: Status, newName?: string) => {
+  // komplet = kolejne zapisy „gram” trafiają na listę rezerwową
+  const full = limit > 0 && G.in.length >= limit;
+  const doSignup = async (status: Status, who: { playerId?: string; newName?: string } = { playerId: me ?? undefined }) => {
     try {
-      const pid = await signup({ gameId: game._id, status, ...(newName ? { name: newName } : { playerId: me as Id<'players'> }) });
+      const pid = await signup({
+        gameId: game._id, status,
+        ...(who.newName ? { name: who.newName, newPlayer: true } : { playerId: who.playerId as Id<'players'> }),
+      });
       setMe(pid); setMeId(pid); buzz();
-      toast(status === 'in' ? '✅ Zapisano – do zobaczenia na boisku!' : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
+      const wasIn = game.signups.some((s) => s.playerId === pid && s.status === 'in');
+      toast(status === 'in'
+        ? (full && !wasIn ? '⏳ Jesteś na liście rezerwowej – wskoczysz, gdy ktoś zrezygnuje' : '✅ Zapisano – do zobaczenia na boisku!')
+        : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
     } catch (e) { toast('⚠️ ' + errorText(e)); }
   };
 
@@ -86,6 +94,7 @@ export default function Game() {
       <div className="game-when">{gameWhen(game)}</div>
       <div className="game-count"><b>{G.in.length}</b>{limit ? ` / ${limit}` : ''} <span>{limit ? 'zajętych miejsc' : plural(G.in.length, 'osoba gra', 'osoby grają', 'osób gra')}</span></div>
       {limit > 0 && <div className="meter"><span style={{ width: `${Math.min(100, (G.in.length / limit) * 100)}%` }} /></div>}
+      {full && open && <p className="game-full">Komplet{G.reserve.length ? ` · ${G.reserve.length} na rezerwie` : ''} – nadal możesz się zapisać na rezerwę.</p>}
       {game.note && <p className="game-note">{game.note}</p>}
       {!open && <p className="game-note">Ten mecz już się odbył – zapisy są zamknięte.{game.matchId && <> <Link to={`/historia/${game.matchId}`}>Zobacz wynik ›</Link></>}</p>}
     </section>
@@ -93,26 +102,19 @@ export default function Game() {
     {open && (me ? <section className="card me-card">
       <div className="card-head"><h2 className="card-title">Cześć, {nameOf(me)}!</h2>
         <button type="button" className="link" onClick={() => { setMe(null); setMeId(null); }}>To nie ja</button></div>
-      <p className="muted small">{mine ? (G.reserve.some((s) => s.playerId === me) ? '⏳ Jesteś na liście rezerwowej.' : 'Możesz zmienić swoją odpowiedź.') : 'Zagrasz w tym meczu?'}</p>
+      <p className="muted small">{mine?.status === 'in'
+        ? (G.reserve.some((s) => s.playerId === me)
+          ? `⏳ Jesteś na liście rezerwowej (${G.reserve.findIndex((s) => s.playerId === me) + 1}. w kolejce). Gdy ktoś zrezygnuje, wskoczysz automatycznie.`
+          : '✅ Grasz! Możesz zmienić swoją odpowiedź.')
+        : mine ? 'Możesz zmienić swoją odpowiedź.'
+        : full ? 'Komplet – jeśli klikniesz „Gram”, trafisz na listę rezerwową.' : 'Zagrasz w tym meczu?'}</p>
       <div className="st-btns">
-        {(['in', 'maybe', 'out'] as Status[]).map((st) => <button key={st} type="button" className={`btn st-${st} ${mine?.status === st ? 'on' : ''}`} onClick={() => doSignup(st)}>{LABEL[st]}</button>)}
+        {(['in', 'maybe', 'out'] as Status[]).map((st) => <button key={st} type="button" className={`btn st-${st} ${mine?.status === st ? 'on' : ''}`} onClick={() => doSignup(st)}>
+          {st === 'in' && full && mine?.status !== 'in' ? '⏳ Rezerwa' : LABEL[st]}</button>)}
       </div>
-    </section> : <section className="card me-card">
-      <h2 className="card-title">Zapisz się</h2>
-      <form className="inline-form" autoComplete="off" onSubmit={(e) => {
-        e.preventDefault();
-        const n = name.trim();
-        if (!n) return;
-        const existing = players.find((p) => nameKey(p.name) === nameKey(n));
-        if (existing) { setMe(existing._id); setMeId(existing._id); }
-        doSignup('in', n);
-      }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} list="roster-signup" placeholder="Twoje imię" maxLength={40} enterKeyHint="go" />
-        <datalist id="roster-signup">{players.map((p) => <option key={p._id} value={p.name} />)}</datalist>
-        <button className="btn primary">✅ Gram</button>
-      </form>
-      <p className="muted small">Zapamiętamy Cię na tym telefonie – następnym razem wystarczy jedno kliknięcie.</p>
-    </section>)}
+    </section> : <SignupPicker players={players} full={full}
+      onPick={(id) => doSignup('in', { playerId: id })}
+      onNew={(n) => doSignup('in', { newName: n })} />)}
 
     {game.teams?.published && Object.keys(lineup).length > 0 && <section className="card">
       <h2 className="card-title">Składy</h2>
