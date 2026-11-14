@@ -1,0 +1,16 @@
+# Netlify buduje aplikację z folderu app/ (React + Vite)
+[build]
+  base = "app"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Adres bazy Convex – publiczny z założenia
+  VITE_CONVEX_URL = "https://befitting-spoonbill-988.eu-west-1.convex.cloud"
+
+# Aplikacja jednostronicowa: każdy adres (np. /terminy/123) obsługuje index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

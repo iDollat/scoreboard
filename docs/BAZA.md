@@ -1,38 +1,37 @@
-# Wspólna baza danych (Convex)
+# Baza danych (Convex) i administrator
 
-Frontend to statyczne pliki: HTML, CSS i JS w katalogu głównym, bez budowania. Dane trzyma **Convex**.
-Przeglądarka łączy się z Convexem bezpośrednio przez jego publiczne HTTP API, bez dodatkowych bibliotek.
-
-## Jak to działa
-- `store.js` to warstwa danych. Każda zmiana trafia najpierw do pamięci telefonu (aplikacja działa bez internetu), a potem na serwer. Wysyłane są tylko zmienione rekordy.
-- Co `pollSeconds` sekund (domyślnie 15) i po powrocie do aplikacji telefon pobiera tylko **nowości** od ostatniej synchronizacji, a nie całą bazę.
-- Jeśli zmiany z telefonu nie zostały jeszcze wysłane, mają pierwszeństwo przed danymi z serwera.
-- Wspólne są: **zawodnicy, mecze (także trwające, na żywo), terminy i zgłoszenia**.
-  Na każdym urządzeniu osobno zostają: trwający u mnie mecz, „kim jestem”, tryb organizatora i wybrany sezon.
-- Ten sam zawodnik dodany na dwóch telefonach, czyli to samo imię i różne id, jest scalany automatycznie razem z meczami i golami.
-
-## Pliki
+## Struktura
 | Plik | Co robi |
 |---|---|
-| `config.js` | adres bazy Convex (`backend: 'convex'`) |
-| `store.js` | synchronizacja (adapter Convex + scalanie zmian) |
-| `convex/schema.ts` | tabele: `players`, `matches`, `games`, `signups` + `deletions` (ślady usunięć) |
-| `convex/sync.ts` | funkcje serwera: `sync:pull` (nowości od czasu X) i `sync:push` (zapis/usunięcie) |
+| `app/convex/schema.ts` | tabele: `players`, `matches`, `games` (terminy), `signups` (zgłoszenia), `settings`, `sessions` |
+| `app/convex/auth.ts` | logowanie administratora (hasło z `ADMIN_PASSWORD`), sesje na 90 dni, blokada po 8 błędnych próbach w ciągu 15 minut |
+| `app/convex/games.ts` | terminy, zapisy (publiczne), zgłoszenia i składy (administrator) |
+| `app/convex/matches.ts` | mecze: odczyt publiczny, zapis i usuwanie tylko przez administratora |
+| `app/convex/players.ts` | zawodnicy, zmiana imion i łączenie duplikatów (administrator) |
+| `app/convex/legacy.ts` | jednorazowy import historii ze starej wersji (tylko dopisuje, działa do `LEGACY_IMPORT_UNTIL`, domyślnie 2027-03-01) |
 
-## Wgrywanie zmian w funkcjach serwera
-Po zmianie czegokolwiek w folderze `convex/`:
+Uprawnienia sprawdza **serwer**: bez ważnej sesji administratora nie da się zmienić meczów, terminów ani składów.
+Zawodnicy bez konta mogą tylko zapisywać się na otwarte terminy.
+
+## Hasło administratora
+Zmiana hasła (w folderze `app/`):
+```
+npx convex env set ADMIN_PASSWORD "nowe-haslo"
+```
+Wszystkie istniejące sesje pozostają ważne. Żeby wylogować wszystkich, wyczyść tabelę `sessions` w panelu Convex.
+
+## Wgrywanie zmian w backendzie
+W folderze `app/` z kluczem w `app/.env` (`CONVEX_DEPLOY_KEY=...`, plik nie trafia do gita):
 ```
 npm install
 npx convex deploy
 ```
-Do wgrywania potrzebny jest **deploy key** (Convex → projekt → *Settings → URL & Deploy Key*), ustawiony w zmiennej `CONVEX_DEPLOY_KEY`.
-Możesz też zalogować się raz przez `npx convex login`.
+Frontend buduje się sam na Netlify po każdym pushu na `main`.
 
-## Bezpieczeństwo
-Funkcje są publiczne: każdy, kto zna adres strony, może czytać i zapisywać dane. Dla grupy znajomych to wystarcza.
-Tryb organizatora to tylko przełącznik w aplikacji, a nie zabezpieczenie.
-Następny krok, jeśli będzie potrzebny: PIN organizatora sprawdzany po stronie serwera w `sync:push` przy usuwaniu meczów i edycji terminów.
-
-## Limity darmowego planu Convex
-Pobieranie tylko nowości sprawia, że jedno otwarte urządzenie to kilka małych zapytań na minutę.
-Przy grupie kilkudziesięciu osób limity darmowego planu są z dużym zapasem.
+## Lokalnie
+```
+cd app
+npm install
+npx convex dev    # lokalna baza testowa
+npm run dev       # aplikacja na http://localhost:5173
+```
