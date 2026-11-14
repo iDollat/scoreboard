@@ -5,7 +5,6 @@
    Wszystkie dane trzymane są w localStorage przeglądarki.
    ========================================================= */
 
-const KEY = 'scoreboard.v2';
 const $ = (s, r = document) => r.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,22 +22,22 @@ const goalsWord = (n) => `${n} ${plural(n, 'gol', 'gole', 'goli')}`;
 /* ---------- Baza danych ---------- */
 function freshDb() {
   const y = String(new Date().getFullYear());
-  return { version: 2, players: [], matches: [], seasons: [y], season: y, activeId: null, draft: null, lastTeams: { A: 'Biali', B: 'Czarni' } };
+  return {
+    version: 2,
+    // współdzielone (po podpięciu bazy trafią do niej)
+    players: [], matches: [], games: [], signups: [],
+    // tylko na tym urządzeniu
+    seasons: [y], season: y, activeId: null, draft: null, lastTeams: { A: 'Biali', B: 'Czarni' },
+    me: null, settings: { organizer: true },
+  };
 }
-function loadDb() {
-  try {
-    const d = JSON.parse(localStorage.getItem(KEY));
-    if (d && d.version === 2) return { ...freshDb(), ...d };
-  } catch (e) { /* uszkodzone dane – start od zera */ }
-  return freshDb();
-}
-let db = loadDb();
+let db = Store.load(freshDb);
 let viewSeason = db.season;
 let statsSort = 'pts';
 let justFinished = null;
 
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  try { Store.save(db); }
   catch (e) { toast('⚠️ Nie udało się zapisać danych'); }
 }
 
@@ -197,6 +196,19 @@ function askText(title, value = '', placeholder = '') {
 
 const buzz = () => navigator.vibrate?.(35);
 
+/* Udostępnianie: systemowe menu (np. WhatsApp), a gdy go nie ma – schowek */
+async function shareOrCopy(text) {
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(text); toast('📋 Skopiowano – wklej np. na grupę'); }
+  catch (e) {
+    openSheet(`<h3>Skopiuj tekst</h3><textarea class="share-text" readonly>${esc(text)}</textarea>`,
+      (panel) => { const t = panel.querySelector('textarea'); t.focus(); t.select(); });
+  }
+}
+
 /* ---------- Blokada wygaszania ekranu podczas meczu ---------- */
 let wakeLock = null, wantAwake = false;
 async function keepAwake(on) {
@@ -231,13 +243,20 @@ function render() {
       const m = matchById(id);
       html = m ? viewSummary(m) : empty('Nie znaleziono meczu.');
     } else html = live ? viewLive(live) : viewSetup();
+  } else if (view === 'zapisy') {
+    const g = id && id !== 'lista' && gameById(id);
+    html = g ? viewGame(g) : viewGames(id === 'lista');
+  } else if (view === 'sklady') {
+    const g = gameById(id);
+    html = g ? viewBuilder(g) : empty('Nie znaleziono meczu.');
   } else if (view === 'historia') html = viewHistory();
   else if (view === 'statystyki') html = viewStats();
   else if (view === 'wiecej') html = viewMore();
   else html = live ? viewLive(live) : viewSetup();
 
   $('#app').innerHTML = html;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === view));
+  const tab = view === 'sklady' ? 'zapisy' : view;
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   document.querySelector('.tabbar [data-tab="mecz"]').classList.toggle('live', !!live);
   $('#season-pill').textContent = `Sezon ${db.season}`;
   keepAwake(view === 'mecz' && !!live && !(id && id !== live.id));
@@ -275,7 +294,10 @@ function viewSetup() {
   };
   const bench = players.filter((p) => !d.lineup[p.id]);
 
+  const planned = db.games.find((g) => g.status === 'open' && g.teams && Object.keys(g.teams.lineup).length);
   return `
+  ${planned ? `<button type="button" class="banner" data-action="b-start" data-gid="${planned.id}">
+    <span>⚖️ Są ułożone składy na ${esc(gameWhen(planned, false))}</span><b>Zacznij ›</b></button>` : ''}
   <section class="card">
     <h2 class="card-title">Nowy mecz</h2>
     <div class="vs-inputs">
@@ -640,7 +662,21 @@ function showPlayerDetail(pid) {
 function viewMore() {
   const apps = appearances();
   const players = [...db.players].sort(byName);
+  const dbStatus = !Store.remote ? '📱 Tylko to urządzenie – wspólna baza nie jest jeszcze podłączona.'
+    : { ok: '🟢 Połączono ze wspólną bazą', syncing: '🔄 Synchronizacja…', offline: '🟠 Brak połączenia – zmiany wyślą się później', local: '…' }[Store.status];
   return `
+  <section class="card">
+    <h2 class="card-title">Ty</h2>
+    <label class="switch-row">
+      <span><b>Tryb organizatora</b><br><span class="muted small">Planowanie meczów, ręczne dopisywanie zawodników i układanie składów.</span></span>
+      <input type="checkbox" class="switch" data-change="organizer" ${isOrganizer() ? 'checked' : ''}>
+    </label>
+    <div class="switch-row">
+      <span><b>Kim jestem</b><br><span class="muted small">${me() ? esc(pname(me())) : 'nie wybrano – ustawi się przy pierwszym zapisie'}</span></span>
+      ${me() ? '<button type="button" class="link" data-action="forget-me">Zmień</button>' : ''}
+    </div>
+  </section>
+
   <section class="card">
     <h2 class="card-title">Sezon</h2>
     <p class="muted small">Nowe mecze zapisują się do bieżącego sezonu.</p>
@@ -665,14 +701,15 @@ function viewMore() {
   </section>
 
   <section class="card">
-    <h2 class="card-title">Kopia zapasowa</h2>
-    <p class="muted small">Dane są zapisane tylko na tym urządzeniu (w przeglądarce). Zrób kopię, żeby przenieść je na inny telefon albo nie stracić ich przy czyszczeniu przeglądarki.</p>
+    <h2 class="card-title">Dane</h2>
+    <p class="small">${dbStatus}</p>
+    <p class="muted small">${Store.remote ? 'Statystyki i zapisy są wspólne dla wszystkich. Kopia na tym telefonie pozwala działać bez internetu.' : 'Zrób kopię, żeby przenieść dane na inny telefon albo nie stracić ich przy czyszczeniu przeglądarki.'}</p>
     <div class="btn-row">
       <button type="button" class="btn" data-action="export">⬇ Eksportuj</button>
       <button type="button" class="btn" data-action="import">⬆ Importuj</button>
     </div>
     <input type="file" id="import-file" accept="application/json,.json" data-change="import" hidden>
-    <button type="button" class="btn ghost danger-text block" data-action="wipe">Usuń wszystkie dane</button>
+    ${Store.remote ? '' : '<button type="button" class="btn ghost danger-text block" data-action="wipe">Usuń wszystkie dane</button>'}
   </section>
 
   <section class="card">
@@ -880,18 +917,7 @@ const actions = {
   },
 
   /* --- podsumowanie --- */
-  async share({ id }) {
-    const text = shareText(matchById(id));
-    if (navigator.share) {
-      try { await navigator.share({ text }); return; }
-      catch (e) { if (e.name === 'AbortError') return; }
-    }
-    try { await navigator.clipboard.writeText(text); toast('📋 Skopiowano – wklej np. na grupę'); }
-    catch (e) {
-      openSheet(`<h3>Skopiuj wynik</h3><textarea class="share-text" readonly>${esc(text)}</textarea>`,
-        (panel) => { const t = panel.querySelector('textarea'); t.focus(); t.select(); });
-    }
-  },
+  share({ id }) { shareOrCopy(shareText(matchById(id))); },
   async reopen({ id }) {
     if (activeMatch()) return toast('Najpierw zakończ trwający mecz');
     if (!(await confirmBox('Wznowić mecz?', 'Mecz wróci do trybu na żywo – możesz dopisać gole i zakończyć go ponownie.', '↺ Wznów', 'primary'))) return;
@@ -939,9 +965,11 @@ const actions = {
     const p = playerById(pid);
     const used = db.matches.some((m) => pid in m.lineup || m.events.some((e) => e.pid === pid));
     if (used) return toast(`${p.name} ma zapisane mecze – nie można usunąć`);
+    if (db.signups.some((s) => s.pid === pid)) return toast(`${p.name} jest zapisany na mecz – najpierw usuń zgłoszenie`);
     if (!(await confirmBox(`Usunąć ${p.name}?`, '', '🗑 Usuń'))) return;
     db.players = db.players.filter((x) => x.id !== pid);
     if (db.draft) delete db.draft.lineup[pid];
+    if (db.me === pid) db.me = null;
     save(); render();
   },
   export() {
@@ -971,12 +999,19 @@ function mergePlayers(fromId, toId) {
   };
   db.matches.forEach(remap);
   if (db.draft) remap({ lineup: db.draft.lineup, events: [] });
+  for (const g of db.games) if (g.teams?.lineup) remap({ lineup: g.teams.lineup, events: [] });
+  for (const sg of db.signups.filter((x) => x.pid === fromId)) {
+    const id = `${sg.gameId}:${toId}`;
+    if (db.signups.some((x) => x.id === id)) db.signups = db.signups.filter((x) => x !== sg);
+    else { sg.id = id; sg.pid = toId; }
+  }
+  if (db.me === fromId) db.me = toId;
   db.players = db.players.filter((p) => p.id !== fromId);
 }
 
 function importData(inc, mode) {
   if (mode === 'replace') {
-    db = { ...freshDb(), ...inc, activeId: null, draft: null };
+    db = { ...freshDb(), ...inc, activeId: null, draft: null, me: db.me, settings: db.settings };
     db.matches = db.matches.filter((m) => m.status === 'done');
     viewSeason = db.season;
     return db.matches.length;
@@ -997,11 +1032,28 @@ function importData(inc, mode) {
     if (!db.seasons.includes(m.season)) db.seasons.push(m.season);
     added++;
   }
+  for (const g of inc.games || []) if (!gameById(g.id)) db.games.push(g);
+  for (const sg of inc.signups || []) {
+    const pid = idMap[sg.pid] ?? sg.pid;
+    const id = `${sg.gameId}:${pid}`;
+    if (!db.signups.some((x) => x.id === id)) db.signups.push({ ...sg, id, pid });
+  }
   return added;
 }
 
+Object.assign(actions, gameActions);
+
 /* ---------- Formularze i zdarzenia ---------- */
 const forms = {
+  'signup-self'(f) {
+    const g = gameById(f.dataset.gid);
+    const p = ensurePlayer(f.v.value);
+    if (!g || !p) return;
+    db.me = p.id;
+    setSignup(g, p.id, 'in', 'self');
+    buzz(); render();
+    toast(`✅ ${p.name}, jesteś zapisany!`);
+  },
   'setup-add'(f) {
     const p = ensurePlayer(f.v.value);
     if (!p) return;
@@ -1056,7 +1108,10 @@ document.addEventListener('input', (ev) => {
 });
 document.addEventListener('change', async (ev) => {
   const t = ev.target;
-  if (t.dataset.change === 'season') {
+  if (t.dataset.change === 'organizer') {
+    db.settings = { ...db.settings, organizer: t.checked };
+    save(); toast(t.checked ? 'Tryb organizatora włączony' : 'Tryb organizatora wyłączony');
+  } else if (t.dataset.change === 'season') {
     db.season = t.value; viewSeason = t.value;
     save(); render(); toast(`Bieżący sezon: ${t.value}`);
   } else if (t.dataset.change === 'import') {
@@ -1070,7 +1125,7 @@ document.addEventListener('change', async (ev) => {
     } catch (e) { return toast('⚠️ To nie jest plik kopii Scoreboard'); }
     const mode = await choose('Import danych', `W pliku: ${inc.matches.length} meczów, ${inc.players.length} zawodników.`, [
       { label: 'Połącz z obecnymi danymi', value: 'merge', cls: 'primary' },
-      { label: 'Zastąp obecne dane', value: 'replace', cls: 'ghost danger-text' },
+      ...(Store.remote ? [] : [{ label: 'Zastąp obecne dane', value: 'replace', cls: 'ghost danger-text' }]),
     ]);
     if (!mode) return;
     const n = importData(inc, mode);
@@ -1107,6 +1162,18 @@ function confetti() {
 
 /* ---------- Start ---------- */
 render();
+
+/* Zmiany od innych użytkowników (gdy podpięta jest baza) */
+let renderPending = false;
+const busy = () => document.activeElement?.matches?.('input, textarea, select') || $('#sheet').classList.contains('open');
+Store.onChange((ev) => {
+  if (ev.type === 'data') db = ev.db;
+  else if (route().view !== 'wiecej') return; // status synchronizacji widać tylko w „Więcej”
+  if (busy()) { renderPending = true; return; }
+  render();
+});
+document.addEventListener('focusout', () => setTimeout(() => { if (renderPending && !busy()) { renderPending = false; render(); } }, 300));
+Store.init();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

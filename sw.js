@@ -1,6 +1,6 @@
 // Service worker: najpierw sieć (świeża wersja), a bez internetu – kopia z pamięci.
-const CACHE = 'scoreboard-v2.0.0';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'scoreboard-v2.1.0';
+const ASSETS = ['./', './index.html', './style.css', './config.js', './store.js', './zapisy.js', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
