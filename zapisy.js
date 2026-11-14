@@ -19,6 +19,65 @@ const upcomingGames = () => db.games.filter((g) => g.status === 'open')
   .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
 const me = () => (db.me && playerById(db.me) ? db.me : null);
 
+/* ---------- Linki: zaproszenie na zapisy i odpowiedź zawodnika ----------
+   Bez wspólnej bazy każdy telefon ma własne dane, więc link niesie dane
+   meczu w sobie (#/zaproszenie/...), a zawodnik odsyła organizatorowi
+   link z odpowiedzią (#/odpowiedz/...). Z podpiętą bazą link to po prostu
+   adres wspólnej listy (#/zapisy/<id>). */
+const b64e = (obj) => {
+  let s = '';
+  new TextEncoder().encode(JSON.stringify(obj)).forEach((b) => { s += String.fromCharCode(b); });
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const b64d = (str) => {
+  const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/'));
+  return JSON.parse(new TextDecoder().decode(Uint8Array.from(s, (c) => c.charCodeAt(0))));
+};
+const appUrl = (hash) => `${location.origin}${location.pathname}#/${hash}`;
+const STATUS_LABEL = { in: '✅ gram', maybe: '🤔 może', out: '❌ nie gram' };
+const viaLinks = (g) => !Store.remote && (g.invited || !isOrganizer());
+
+function inviteLink(g) {
+  if (Store.remote) return appUrl(`zapisy/${g.id}`);
+  const { id, date, time, place, limit, note } = g;
+  return appUrl(`zaproszenie/${b64e({ id, date, time, place, limit, note })}`);
+}
+
+/* Otwarcie zaproszenia: mecz trafia na ten telefon */
+function acceptInvite(code) {
+  let d;
+  try { d = b64d(code); if (!d.id || !d.date) throw new Error(); }
+  catch (e) { return empty('Ten link do zapisów jest uszkodzony.<br>Poproś organizatora o nowy.'); }
+  const fresh = !db.players.length && !db.matches.length && !db.games.length;
+  const g = gameById(d.id);
+  if (g) { if (g.invited) Object.assign(g, { date: d.date, time: d.time, place: d.place, limit: d.limit, note: d.note }); }
+  else {
+    if (fresh) db.settings = { ...db.settings, organizer: false };
+    db.games.push({ id: d.id, date: d.date, time: d.time || '', place: d.place || '', limit: +d.limit || 0, note: d.note || '', status: 'open', createdAt: Date.now(), teams: null, matchId: null, invited: true });
+  }
+  save();
+  location.replace(`#/zapisy/${d.id}`);
+  return '';
+}
+
+/* Otwarcie odpowiedzi zawodnika (u organizatora) */
+function acceptReply(code) {
+  let d;
+  try { d = b64d(code); if (!d.g || !d.n || !STATUS_LABEL[d.s]) throw new Error(); }
+  catch (e) { return empty('Ten link z odpowiedzią jest uszkodzony.'); }
+  const g = gameById(d.g);
+  if (!g) return empty('Tego meczu nie ma na tym telefonie.<br>Odpowiedź musi otworzyć organizator meczu.');
+  const p = ensurePlayer(d.n);
+  const id = signupId(g.id, p.id);
+  const s = db.signups.find((x) => x.id === id);
+  if (!s) db.signups.push({ id, gameId: g.id, pid: p.id, status: d.s, by: 'self', at: d.t || Date.now(), replyAt: d.t });
+  else if ((s.replyAt || 0) < d.t) Object.assign(s, { status: d.s, by: 'self', replyAt: d.t, ...(s.status !== d.s ? { at: d.t } : {}) });
+  save();
+  location.replace(`#/zapisy/${g.id}`);
+  setTimeout(() => toast(`${p.name}: ${STATUS_LABEL[d.s]}`), 50);
+  return '';
+}
+
 function gameWhen(g, long = true) {
   const d = new Date(`${g.date}T${g.time || '12:00'}`);
   const day = d.toLocaleDateString('pl-PL', long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: 'numeric', month: 'short' });
@@ -142,6 +201,8 @@ function viewGame(g) {
         <div class="card-head"><h2 class="card-title">Cześć, ${esc(pname(myId))}!</h2><button type="button" class="link" data-action="forget-me">To nie ja</button></div>
         <p class="muted small">${mine ? (mine.status === 'in' && G.reserve.some((s) => s.pid === myId) ? '⏳ Jesteś na liście rezerwowej.' : 'Możesz zmienić swoją odpowiedź.') : 'Zagrasz w tym meczu?'}</p>
         <div class="st-btns">${statusBtn('in', '✅ Gram')}${statusBtn('maybe', '🤔 Może')}${statusBtn('out', '❌ Nie gram')}</div>
+        ${mine && viaLinks(g) ? `<button type="button" class="btn primary block reply-btn" data-action="signup-reply" data-gid="${g.id}">📨 Wyślij odpowiedź organizatorowi</button>
+        <p class="muted small">Organizator zobaczy Cię na liście, gdy otworzy wysłany link.</p>` : ''}
       </section>`
     : `<section class="card me-card">
         <h2 class="card-title">Zapisz się</h2>
@@ -161,7 +222,7 @@ function viewGame(g) {
   <section class="game-hero">
     <div class="game-place">${esc(g.place || 'Mecz')}</div>
     <div class="game-when">${esc(gameWhen(g))}</div>
-    <div class="game-count"><b>${G.in.length}</b>${limit ? ` / ${limit}` : ''} <span>${plural(G.in.length, 'osoba gra', 'osoby grają', 'osób gra')}</span></div>
+    <div class="game-count"><b>${G.in.length}</b>${limit ? ` / ${limit}` : ''} <span>${limit ? 'zajętych miejsc' : plural(G.in.length, 'osoba gra', 'osoby grają', 'osób gra')}</span></div>
     ${limit ? `<div class="meter"><span style="width:${pct}%"></span></div>` : ''}
     ${g.note ? `<p class="game-note">${esc(g.note)}</p>` : ''}
   </section>
@@ -180,12 +241,14 @@ function viewGame(g) {
   ${section('⏳ Rezerwa', G.reserve, true)}
   ${section('🤔 Może', G.maybe)}
   ${section('❌ Nie grają', G.out)}
+  ${viaLinks(g) ? '<p class="muted small center">Pełna lista zapisanych jest u organizatora.</p>' : ''}
 
   ${org ? `<section class="card org-card">
     <h2 class="card-title">Organizator</h2>
+    <button type="button" class="btn primary block org-link" data-action="game-link" data-gid="${g.id}">🔗 Link do zapisów</button>
     <div class="org-actions">
       <button type="button" class="btn" data-action="signup-add" data-gid="${g.id}">✍ Dodaj ręcznie</button>
-      <a class="btn primary" href="#/sklady/${g.id}">⚖️ Ułóż składy</a>
+      <a class="btn" href="#/sklady/${g.id}">⚖️ Ułóż składy</a>
       <button type="button" class="btn" data-action="game-edit" data-gid="${g.id}">✎ Edytuj</button>
       <button type="button" class="btn ghost danger-text" data-action="game-cancel" data-gid="${g.id}">Odwołaj</button>
     </div>
@@ -270,7 +333,7 @@ function gameShareText(g) {
   const lines = [`📅 ${g.place ? g.place + ' – ' : ''}${gameWhen(g)}`, '', `✅ Grają (${G.in.length}${g.limit ? '/' + g.limit : ''}):`, names(G.in) || '—'];
   if (G.reserve.length) lines.push('', '⏳ Rezerwa:', names(G.reserve));
   if (G.maybe.length) lines.push('', `🤔 Może: ${G.maybe.map((s) => pname(s.pid)).join(', ')}`);
-  lines.push('', `Zapisy: ${location.origin}${location.pathname}#/zapisy/${g.id}`);
+  lines.push('', `Zapisy: ${inviteLink(g)}`);
   return lines.join('\n');
 }
 function teamsShareText(g) {
@@ -334,12 +397,44 @@ const gameActions = {
     location.hash = '#/zapisy';
   },
   'game-share'({ gid }) { shareOrCopy(gameShareText(gameById(gid))); },
+  'game-link'({ gid }) {
+    const g = gameById(gid);
+    const url = inviteLink(g);
+    const text = `⚽ Zapisy na mecz: ${gameWhen(g)}${g.place ? ` – ${g.place}` : ''}\nZapisz się tutaj 👉 ${url}`;
+    openSheet(`
+      <h3>🔗 Link do zapisów</h3>
+      <p class="muted small">${Store.remote
+        ? 'Każdy, kto otworzy link, zobaczy listę i sam się zapisze.'
+        : 'Wyślij link na grupę. Zawodnik otworzy go, zapisze się i jednym przyciskiem odeśle Ci odpowiedź. Gdy otworzysz tę odpowiedź, zawodnik pojawi się na Twojej liście. Po podpięciu wspólnej bazy wszystko będzie się działo automatycznie.'}</p>
+      <input class="link-field" readonly value="${esc(url)}">
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" data-x="share">📤 Wyślij link</button>
+        <button type="button" class="btn" data-x="copy">📋 Kopiuj link</button>
+      </div>`,
+      (panel) => {
+        const field = panel.querySelector('.link-field');
+        field.onclick = () => field.select();
+        panel.querySelector('[data-x="share"]').onclick = () => shareOrCopy(text);
+        panel.querySelector('[data-x="copy"]').onclick = async () => {
+          try { await navigator.clipboard.writeText(url); toast('📋 Link skopiowany'); }
+          catch (e) { field.focus(); field.select(); toast('Zaznaczono link – skopiuj go'); }
+        };
+      });
+  },
+  'signup-reply'({ gid }) {
+    const g = gameById(gid);
+    const s = db.signups.find((x) => x.id === signupId(gid, me()));
+    if (!s) return;
+    const url = appUrl(`odpowiedz/${b64e({ g: gid, n: pname(s.pid), s: s.status, t: Date.now() })}`);
+    shareOrCopy(`${pname(s.pid)}: ${STATUS_LABEL[s.status]} – ${gameWhen(g)}\nDopisz mnie 👉 ${url}`);
+  },
 
   'signup-me'({ gid, status }) {
     const g = gameById(gid);
     setSignup(g, me(), status, 'self');
     buzz(); render();
-    toast(status === 'in' ? '✅ Zapisano – do zobaczenia na boisku!' : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
+    if (viaLinks(g)) toast('Zapisano – teraz wyślij odpowiedź organizatorowi 📨');
+    else toast(status === 'in' ? '✅ Zapisano – do zobaczenia na boisku!' : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
   },
   'forget-me'() { db.me = null; save(); render(); },
 

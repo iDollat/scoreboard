@@ -246,7 +246,9 @@ function render() {
   } else if (view === 'zapisy') {
     const g = id && id !== 'lista' && gameById(id);
     html = g ? viewGame(g) : viewGames(id === 'lista');
-  } else if (view === 'sklady') {
+  } else if (view === 'zaproszenie') html = acceptInvite(id);
+  else if (view === 'odpowiedz') html = acceptReply(id);
+  else if (view === 'sklady') {
     const g = gameById(id);
     html = g ? viewBuilder(g) : empty('Nie znaleziono meczu.');
   } else if (view === 'historia') html = viewHistory();
@@ -1052,7 +1054,7 @@ const forms = {
     db.me = p.id;
     setSignup(g, p.id, 'in', 'self');
     buzz(); render();
-    toast(`✅ ${p.name}, jesteś zapisany!`);
+    toast(viaLinks(g) ? 'Zapisano – teraz wyślij odpowiedź organizatorowi 📨' : `✅ ${p.name}, jesteś zapisany!`);
   },
   'setup-add'(f) {
     const p = ensurePlayer(f.v.value);

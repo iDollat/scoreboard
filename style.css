@@ -438,3 +438,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .banner b { color: var(--accent); white-space: nowrap; }
 
 .tabbar a { font-size: 10.5px; }
+
+.org-link { margin-bottom: 8px; }
+.reply-btn { margin-top: 12px; }
+.link-field { margin-top: 10px; font-size: 13px; color: var(--muted); }
