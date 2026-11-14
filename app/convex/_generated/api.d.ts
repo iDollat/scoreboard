@@ -8,7 +8,13 @@
  * @module
  */
 
-import type * as sync from "../sync.js";
+import type * as auth from "../auth.js";
+import type * as games from "../games.js";
+import type * as legacy from "../legacy.js";
+import type * as lib from "../lib.js";
+import type * as matches from "../matches.js";
+import type * as players from "../players.js";
+import type * as settings from "../settings.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +23,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  sync: typeof sync;
+  auth: typeof auth;
+  games: typeof games;
+  legacy: typeof legacy;
+  lib: typeof lib;
+  matches: typeof matches;
+  players: typeof players;
+  settings: typeof settings;
 }>;
 
 /**
