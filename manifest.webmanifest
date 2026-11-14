@@ -1,0 +1,15 @@
+{
+  "name": "Scoreboard – wynik meczu",
+  "short_name": "Scoreboard",
+  "description": "Licznik wyniku meczu, strzelców i statystyk sezonu.",
+  "lang": "pl",
+  "start_url": "./#/mecz",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0f0d",
+  "theme_color": "#0a0f0d",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
