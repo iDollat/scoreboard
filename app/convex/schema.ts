@@ -81,4 +81,7 @@ export default defineSchema({
   // Sesje administratora (logowanie hasłem z ADMIN_PASSWORD)
   sessions: defineTable({ token: v.string(), expiresAt: v.number() }).index("by_token", ["token"]),
   loginFails: defineTable({ at: v.number() }).index("by_at", ["at"]),
+
+  // Pozostałość po poprzedniej wersji synchronizacji (nieużywana)
+  deletions: defineTable(v.any()),
 });

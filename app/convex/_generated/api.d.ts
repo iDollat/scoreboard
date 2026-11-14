@@ -13,6 +13,7 @@ import type * as games from "../games.js";
 import type * as legacy from "../legacy.js";
 import type * as lib from "../lib.js";
 import type * as matches from "../matches.js";
+import type * as migrate from "../migrate.js";
 import type * as players from "../players.js";
 import type * as settings from "../settings.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   legacy: typeof legacy;
   lib: typeof lib;
   matches: typeof matches;
+  migrate: typeof migrate;
   players: typeof players;
   settings: typeof settings;
 }>;
