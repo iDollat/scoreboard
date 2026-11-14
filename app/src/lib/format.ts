@@ -25,6 +25,12 @@ export function gameWhen(g: { date: string; time: string }, long = true) {
   const s = `${day}${g.time ? `, ${g.time}` : ''}`;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+/* Najbliższy piątek (po dzisiejszym dniu) – domyślny termin meczu */
+export const nextFridayIso = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + (((5 - d.getDay() + 7) % 7) || 7));
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 export const todayIso = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);

@@ -111,6 +111,7 @@ export default function Builder() {
     </div>
     <p className="muted small center">Przeciągnij zawodnika do drużyny (na telefonie przytrzymaj chwilę) albo dotknij, żeby przełączyć. Liczba to siła z wyników.</p>
 
+    <div className="dnd-area" onContextMenu={(e) => e.preventDefault()}>
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
       <div className="dnd-cols">
         <DropZone id="A" title={teams.A} count={inTeam('A').length} power={sA}>{inTeam('A').map(chip)}</DropZone>
@@ -124,6 +125,7 @@ export default function Builder() {
         {dragging && <div className={`chip dragging ${teams.lineup[dragging] ? 'on-' + teams.lineup[dragging] : ''}`}>{nameOf(dragging)}</div>}
       </DragOverlay>
     </DndContext>
+    </div>
 
     <button type="button" className="btn ghost block" onClick={() => setAdding(true)}>✍ Dodaj zawodnika spoza zapisów</button>
     <div className="btn-row">

@@ -5,7 +5,7 @@ import { api } from '../../convex/_generated/api';
 import type { Doc } from '../../convex/_generated/dataModel';
 import { useAdmin } from '../lib/admin';
 import { Empty, Loading, Sheet, errorText, useUI } from '../lib/ui';
-import { gameWhen, todayIso } from '../lib/format';
+import { gameWhen, nextFridayIso } from '../lib/format';
 
 export default function Games() {
   const games = useQuery(api.games.list);
@@ -54,8 +54,8 @@ export function GameForm({ open, onClose, game, onSaved }: {
         } catch (err) { toast('⚠️ ' + errorText(err)); } finally { setBusy(false); }
       }}>
         <div className="two">
-          <label>Data<input type="date" name="date" defaultValue={game?.date ?? todayIso()} required /></label>
-          <label>Godzina<input type="time" name="time" defaultValue={game?.time ?? '19:00'} /></label>
+          <label>Data<input type="date" name="date" defaultValue={game?.date ?? nextFridayIso()} required /></label>
+          <label>Godzina<input type="time" name="time" defaultValue={game?.time ?? '21:00'} /></label>
         </div>
         <label>Miejsce<input name="place" defaultValue={game?.place ?? ''} maxLength={60} placeholder="np. Hala przy szkole" /></label>
         <label>Limit miejsc<input type="number" name="limit" defaultValue={game?.limit || ''} min={0} max={60} inputMode="numeric" placeholder="bez limitu" /></label>
