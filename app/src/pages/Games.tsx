@@ -28,6 +28,10 @@ export default function Games() {
   </>;
 }
 
+/* Wartości domyślne nowego terminu */
+const DEFAULT_PLACE = 'Hala sportowa im. Agaty Mróz w Dąbrowie Tarnowskiej';
+const DEFAULT_LIMIT = 14;
+
 /* Formularz terminu: nowy albo edycja */
 export function GameForm({ open, onClose, game, onSaved }: {
   open: boolean; onClose: () => void; game?: Doc<'games'>; onSaved?: (id: string) => void;
@@ -57,8 +61,8 @@ export function GameForm({ open, onClose, game, onSaved }: {
           <label>Data<input type="date" name="date" defaultValue={game?.date ?? nextFridayIso()} required /></label>
           <label>Godzina<input type="time" name="time" defaultValue={game?.time ?? '21:00'} /></label>
         </div>
-        <label>Miejsce<input name="place" defaultValue={game?.place ?? ''} maxLength={60} placeholder="np. Hala przy szkole" /></label>
-        <label>Limit miejsc<input type="number" name="limit" defaultValue={game?.limit || ''} min={0} max={60} inputMode="numeric" placeholder="bez limitu" /></label>
+        <label>Miejsce<input name="place" defaultValue={game ? game.place : DEFAULT_PLACE} maxLength={60} placeholder="np. Hala przy szkole" /></label>
+        <label>Limit miejsc<input type="number" name="limit" defaultValue={game ? game.limit || '' : DEFAULT_LIMIT} min={0} max={60} inputMode="numeric" placeholder="bez limitu" /></label>
         <label>Notatka<input name="note" defaultValue={game?.note ?? ''} maxLength={160} placeholder="np. zrzutka 10 zł, jasna i ciemna koszulka" /></label>
         <button className="btn primary big" disabled={busy}>{game ? 'Zapisz' : 'Utwórz i otwórz zapisy'}</button>
       </form>
