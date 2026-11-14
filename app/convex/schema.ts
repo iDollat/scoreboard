@@ -74,7 +74,7 @@ export default defineSchema({
     .index("by_player", ["playerId"]),
 
   settings: defineTable({
-    season: v.string(),
+    season: v.optional(v.string()), // brak = sezon automatycznie z daty
     seasons: v.array(v.string()),
   }),
 

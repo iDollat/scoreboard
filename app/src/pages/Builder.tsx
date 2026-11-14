@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from 'convex/react';
 import {
-  DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors,
+  DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { api } from '../../convex/_generated/api';
@@ -33,10 +33,10 @@ export default function Builder() {
   const [adding, setAdding] = useState(false);
   const saveTimer = useRef(0);
 
-  // przeciąganie: myszką od razu, palcem po krótkim przytrzymaniu (żeby dało się przewijać)
+  // przeciąganie: myszką od razu, palcem po krótkim przytrzymaniu (zwykłe przesunięcie palcem dalej przewija stronę)
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function Builder() {
   };
   const cycle = (pid: string) => move(pid, !teams.lineup[pid] ? 'A' : teams.lineup[pid] === 'A' ? 'B' : 'bench');
 
-  const onDragStart = (e: DragStartEvent) => setDragging(String(e.active.id));
+  const onDragStart = (e: DragStartEvent) => { setDragging(String(e.active.id)); navigator.vibrate?.(20); };
   const onDragEnd = (e: DragEndEvent) => {
     setDragging(null);
     if (e.over) move(String(e.active.id), e.over.id as Zone);

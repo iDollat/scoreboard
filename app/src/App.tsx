@@ -13,6 +13,7 @@ import Stats from './pages/Stats';
 import Live from './pages/Live';
 import Admin from './pages/Admin';
 import { Empty } from './lib/ui';
+import { shortSeason } from './lib/format';
 
 const Icon = {
   home: <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></svg>,
@@ -33,7 +34,7 @@ export default function App() {
     <header className="topbar">
       <Link className="brand" to="/"><img src="/icon.svg" alt="" width={26} height={26} /> Hala DT</Link>
       <div className="top-right">
-        {settings && <span className="season-pill">Sezon {settings.season}</span>}
+        {settings && <span className="season-pill" title={`Sezon ${settings.season}`}>Sezon {shortSeason(settings.season)}</span>}
         <Link to="/admin" className={`admin-pill ${isAdmin ? 'on' : ''}`} aria-label="Administrator">{isAdmin ? '🔑 Admin' : '🔒'}</Link>
       </div>
     </header>

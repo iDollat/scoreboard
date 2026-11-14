@@ -25,8 +25,19 @@ export async function findOrCreatePlayer(ctx: MutationCtx, rawName: string): Pro
   return await ctx.db.insert("players", { name, key });
 }
 
+/* Sezon piłkarski: od 1 lipca do 30 czerwca, np. listopad 2026 → "2026/2027" */
+export function seasonFor(ts: number = Date.now()) {
+  const d = new Date(ts);
+  const start = d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+  return `${start}/${start + 1}`;
+}
+export const isOldSeasonName = (s: string) => /^\d{4}$/.test(s);
+
+/* Bieżący sezon: wybrany przez administratora albo – domyślnie – wynikający z daty */
 export async function getSettings(ctx: QueryCtx | MutationCtx) {
   const s = await ctx.db.query("settings").first();
-  const y = String(new Date().getFullYear());
-  return s ?? { _id: null, season: y, seasons: [y] };
+  const auto = seasonFor();
+  const season = s?.season && !isOldSeasonName(s.season) ? s.season : auto;
+  const seasons = [...new Set([...(s?.seasons ?? []).filter((x) => !isOldSeasonName(x)), auto, season])];
+  return { _id: s?._id ?? null, season, seasons, manual: !!s?.season && season !== auto };
 }

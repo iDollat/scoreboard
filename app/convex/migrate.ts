@@ -1,7 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { cleanName, nameKey } from "./lib";
+import { cleanName, isOldSeasonName, nameKey, seasonFor } from "./lib";
 
 /*
  * Jednorazowe przeniesienie danych z poprzedniej wersji bazy (rekordy JSON z sync:pull).
@@ -51,5 +51,26 @@ export const importBackup = internalMutation({
       ns++;
     }
     return { players: np, games: ng, signups: ns };
+  },
+});
+
+/* Zmiana nazw sezonów z samego roku ("2026") na sezony piłkarskie ("2026/2027").
+   npx convex run migrate:seasonNames */
+export const seasonNames = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let changed = 0;
+    for (const m of await ctx.db.query("matches").collect()) {
+      if (!isOldSeasonName(m.season)) continue;
+      await ctx.db.patch(m._id, { season: seasonFor(m.startedAt) });
+      changed++;
+    }
+    const st = await ctx.db.query("settings").first();
+    if (st) {
+      const fromMatches = (await ctx.db.query("matches").collect()).map((m) => m.season);
+      const seasons = [...new Set([...st.seasons.filter((x) => !isOldSeasonName(x)), ...fromMatches, seasonFor()])];
+      await ctx.db.patch(st._id, { seasons, season: st.season && !isOldSeasonName(st.season) ? st.season : undefined });
+    }
+    return { matches: changed, settings: !!st };
   },
 });

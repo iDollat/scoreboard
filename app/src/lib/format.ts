@@ -39,3 +39,14 @@ export async function shareOrCopy(text: string, toast: (m: string) => void) {
   catch { window.prompt('Skopiuj tekst:', text); }
 }
 export const buzz = () => navigator.vibrate?.(35);
+
+/* "2026/2027" → "26/27" (krótko w nagłówku) */
+export const shortSeason = (s: string) => {
+  const m = s.match(/^(\d{4})\/(\d{4})$/);
+  return m ? `${m[1].slice(2)}/${m[2].slice(2)}` : s;
+};
+/* Następny sezon po "2026/2027" → "2027/2028" */
+export const nextSeason = (s: string) => {
+  const m = s.match(/^(\d{4})\/(\d{4})$/);
+  return m ? `${+m[1] + 1}/${+m[2] + 1}` : '';
+};

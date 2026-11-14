@@ -6,7 +6,7 @@ import type { Id } from '../../convex/_generated/dataModel';
 import { useAdmin } from '../lib/admin';
 import { useMatches, usePlayers, useSettings } from '../lib/data';
 import { Loading, errorText, useUI } from '../lib/ui';
-import { plural } from '../lib/format';
+import { nextSeason, plural } from '../lib/format';
 import { allSeasons } from '../components';
 
 export default function Admin() {
@@ -64,13 +64,13 @@ function AdminPanel({ logout }: { logout: () => void }) {
 
     <section className="card">
       <h2 className="card-title">Sezon</h2>
-      <p className="muted small">Nowe mecze zapisują się do bieżącego sezonu.</p>
+      <p className="muted small">Nowe mecze zapisują się do bieżącego sezonu. Sezon trwa od 1 lipca do 30 czerwca i zmienia się sam{settings.season !== settings.auto ? ` – teraz wybrany ręcznie (automatycznie byłby ${settings.auto})` : ''}.</p>
       <div className="inline-form">
         <select value={settings.season} onChange={(e) => run(() => setSeason({ token: token!, season: e.target.value }), `Bieżący sezon: ${e.target.value}`)}>
           {allSeasons(settings, matches).map((s) => <option key={s}>{s}</option>)}
         </select>
         <button type="button" className="btn" onClick={async () => {
-          const v = await ask('Nazwa nowego sezonu', '', 'np. 2027 albo Wiosna 2027');
+          const v = await ask('Nazwa nowego sezonu', nextSeason(settings.season), 'np. 2027/2028');
           if (v) run(() => setSeason({ token: token!, season: v }), `Bieżący sezon: ${v}`);
         }}>+ Nowy sezon</button>
       </div>

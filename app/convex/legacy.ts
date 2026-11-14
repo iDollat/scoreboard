@@ -1,7 +1,7 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { cleanName, getSettings, nameKey } from "./lib";
+import { cleanName, getSettings, nameKey, seasonFor } from "./lib";
 
 /*
  * Import historii ze starej wersji strony (dane z przeglądarki telefonu).
@@ -56,7 +56,8 @@ export const importLocal = mutation({
           t: num(e.t),
           ...(e.type === "goal" ? { team: team(e.team) ?? "A", own: !!e.own } : { from: team(e.from) ?? "A", to: team(e.to) ?? "B" }),
         }));
-      const season = str(m.season, 30) || String(new Date(num(m.startedAt, Date.now())).getFullYear());
+      // sezon zawsze z daty meczu (stara wersja zapisywała sam rok, np. "2026")
+      const season = seasonFor(num(m.startedAt, Date.now()));
       seasons.add(season);
       await ctx.db.insert("matches", {
         clientId,
@@ -74,12 +75,11 @@ export const importLocal = mutation({
     }
 
     // sezony
-    for (const s of Array.isArray(data.seasons) ? data.seasons : []) if (typeof s === "string" && s) seasons.add(s.slice(0, 30));
     if (seasons.size) {
       const st = await getSettings(ctx);
       const all = [...new Set([...st.seasons, ...seasons])];
       if (st._id) await ctx.db.patch(st._id, { seasons: all });
-      else await ctx.db.insert("settings", { season: st.season, seasons: all });
+      else await ctx.db.insert("settings", { seasons: all });
     }
     return { players, matches };
   },
