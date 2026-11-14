@@ -1,5 +1,7 @@
 // Service worker: najpierw sieć (świeża wersja), a bez internetu – kopia z pamięci.
-const CACHE = 'scoreboard-v2.0.0';
+// Nazwa pamięci zależy od ścieżki – wersja główna i /update/ nie kasują sobie nawzajem plików.
+const PREFIX = 'scoreboard:' + self.registration.scope + ':';
+const CACHE = PREFIX + 'v2.0.1';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -9,7 +11,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith(PREFIX) || k.startsWith('scoreboard-v')) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

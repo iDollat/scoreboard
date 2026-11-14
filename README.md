@@ -18,6 +18,11 @@ Wszystko jest zapisane w przeglądarce na urządzeniu (localStorage). W zakładc
 - rozpocząć nowy sezon,
 - poprawić imiona zawodników i połączyć duplikaty.
 
+## Wersja testowa (/update)
+W folderze `update/` jest wersja beta z zapisami na mecz, układaniem składów i przygotowaniem pod wspólną bazę
+(kod źródłowy na gałęzi `feature/zapisy-i-baza`). Działa pod adresem `…/scoreboard/update/`.
+Obie wersje korzystają z tych samych danych w przeglądarce, więc w becie widać prawdziwych zawodników i statystyki.
+
 ## Hosting
 Strona jest statyczna (HTML + CSS + JS, bez budowania), więc działa na darmowym GitHub Pages:
 **Settings → Pages → Deploy from a branch → `main` / root**.
