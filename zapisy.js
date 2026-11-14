@@ -48,6 +48,7 @@ function acceptInvite(code) {
   let d;
   try { d = b64d(code); if (!d.id || !d.date) throw new Error(); }
   catch (e) { return empty('Ten link do zapisów jest uszkodzony.<br>Poproś organizatora o nowy.'); }
+  if (Store.remote) { location.replace(`#/zapisy/${d.id}`); return loading(); }
   const fresh = !db.players.length && !db.matches.length && !db.games.length;
   const g = gameById(d.id);
   if (g) { if (g.invited) Object.assign(g, { date: d.date, time: d.time, place: d.place, limit: d.limit, note: d.note }); }
@@ -66,6 +67,7 @@ function acceptReply(code) {
   try { d = b64d(code); if (!d.g || !d.n || !STATUS_LABEL[d.s]) throw new Error(); }
   catch (e) { return empty('Ten link z odpowiedzią jest uszkodzony.'); }
   const g = gameById(d.g);
+  if (!g && !Store.loaded) return loading(); // poczekaj na dane z bazy
   if (!g) return empty('Tego meczu nie ma na tym telefonie.<br>Odpowiedź musi otworzyć organizator meczu.');
   const p = ensurePlayer(d.n);
   const id = signupId(g.id, p.id);

@@ -1,17 +1,16 @@
 /* =========================================================
-   Konfiguracja wspólnej bazy danych
+   Konfiguracja wspólnej bazy danych (Convex)
    ---------------------------------------------------------
-   backend: 'local'    – dane tylko na tym urządzeniu (domyślnie)
-   backend: 'supabase' – dane wspólne dla wszystkich (instrukcja w docs/BAZA.md)
+   backend: 'convex' – dane wspólne dla wszystkich
+   backend: 'local'  – dane tylko na tym urządzeniu
 
-   Klucz "anon" Supabase jest publiczny z założenia – można go trzymać
-   w repozytorium. Dostęp do danych chronią reguły (RLS) w bazie.
+   Adres bazy jest publiczny z założenia (widzi go każda przeglądarka).
+   Funkcje serwera: convex/sync.ts, instrukcja: docs/BAZA.md
    ========================================================= */
 window.SCOREBOARD_CONFIG = {
-  backend: 'local',
-  supabase: {
-    url: '',      // np. 'https://abcdefgh.supabase.co'
-    anonKey: '',  // Project Settings → API → anon public
+  backend: 'convex',
+  convex: {
+    url: 'https://befitting-spoonbill-988.eu-west-1.convex.cloud',
   },
-  pollSeconds: 30, // co ile sekund pobierać zmiany od innych
+  pollSeconds: 15, // co ile sekund pobierać zmiany od innych
 };

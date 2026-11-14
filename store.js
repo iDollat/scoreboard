@@ -6,10 +6,10 @@
    Aplikacja trzyma cały stan w jednym obiekcie `db` i po każdej
    zmianie woła Store.save(db). Store:
      1. zawsze zapisuje kopię w localStorage (działa offline),
-     2. jeśli podpięta jest baza – wylicza, które rekordy się
-        zmieniły od ostatniej synchronizacji i wysyła tylko je,
-     3. co jakiś czas pobiera zmiany od innych i scala je
-        z lokalnymi (lokalne, jeszcze niewysłane zmiany wygrywają).
+     2. jeśli podpięta jest baza – wylicza, które rekordy zmieniły
+        się od ostatniej synchronizacji i wysyła tylko je,
+     3. co kilkanaście sekund pobiera zmiany od innych (tylko nowości)
+        i scala je z lokalnymi – lokalne, jeszcze niewysłane zmiany wygrywają.
 
    Kolekcje współdzielone (trafiają do bazy): players, matches,
    games, signups. Reszta (aktywny mecz, ustawienia, „kim jestem”)
@@ -17,7 +17,7 @@
    ========================================================= */
 
 const STORE_KEY = 'scoreboard.v2';
-const SYNC_KEY = 'scoreboard.synced';
+const SYNC_KEY = 'scoreboard.sync';
 const SHARED = ['players', 'matches', 'games', 'signups'];
 
 /* Krótki hash tekstu (FNV-1a) – żeby nie trzymać drugiej kopii danych */
@@ -28,92 +28,83 @@ function hashStr(s) {
 }
 const hashRec = (r) => hashStr(JSON.stringify(r));
 
-/* ---------- Adapter: Supabase (REST, bez dodatkowych bibliotek) ----------
-   Każda kolekcja to tabela: id text PK, data jsonb, updated_at.
-   Schemat: supabase/schema.sql. NIEPRZETESTOWANY z prawdziwą bazą. */
-function SupabaseAdapter({ url, anonKey }) {
-  const base = url.replace(/\/$/, '') + '/rest/v1/';
-  const headers = { apikey: anonKey, Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' };
-  const check = async (res) => { if (!res.ok) throw new Error(`${res.status} ${await res.text()}`); return res; };
+/* ---------- Adapter: Convex (publiczne HTTP API, bez bibliotek) ----------
+   Funkcje serwera: convex/sync.ts (pull, push). */
+function ConvexAdapter({ url }) {
+  const base = url.replace(/\/$/, '');
+  const call = async (kind, path, args) => {
+    const res = await fetch(`${base}/api/${kind}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, args, format: 'json' }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.status !== 'success') throw new Error(body.errorMessage || `HTTP ${res.status}`);
+    return body.value;
+  };
   return {
-    name: 'supabase',
-    async pullAll() {
-      const out = {};
-      await Promise.all(SHARED.map(async (c) => {
-        const res = await check(await fetch(`${base}${c}?select=data`, { headers }));
-        out[c] = (await res.json()).map((row) => row.data);
-      }));
-      return out;
-    },
-    async push({ upserts, deletes }) {
-      for (const c of SHARED) {
-        if (upserts[c].length) {
-          const now = new Date().toISOString();
-          await check(await fetch(`${base}${c}`, {
-            method: 'POST',
-            headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
-            body: JSON.stringify(upserts[c].map((r) => ({ id: r.id, data: r, updated_at: now }))),
-          }));
-        }
-        if (deletes[c].length) {
-          const ids = deletes[c].map((id) => `"${String(id).replace(/"/g, '')}"`).join(',');
-          await check(await fetch(`${base}${c}?id=in.(${encodeURIComponent(ids)})`, { method: 'DELETE', headers }));
-        }
-      }
-    },
+    name: 'convex',
+    pull: (since) => call('query', 'sync:pull', { since }),
+    push: ({ upserts, deletes }) => call('mutation', 'sync:push', { upserts, deletes }),
   };
 }
 
 const Store = (() => {
-  const cfg = Object.assign({ backend: 'local', pollSeconds: 30 }, window.SCOREBOARD_CONFIG || {});
-  let adapter = null;
+  const cfg = Object.assign({ backend: 'local', pollSeconds: 15 }, window.SCOREBOARD_CONFIG || {});
+  const adapter = cfg.backend === 'convex' && cfg.convex?.url ? ConvexAdapter(cfg.convex) : null;
   let current = null;
-  let status = 'local';     // local | syncing | ok | offline
+  let status = adapter ? 'syncing' : 'local'; // local | syncing | ok | offline
+  let loaded = !adapter;
   let lastSync = null;
-  let pushTimer = null, pushing = false, pushAgain = false;
+  let pushTimer = null, pushing = false, pushAgain = false, pulling = false;
   const listeners = [];
 
-  const readSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } };
+  // { cursor, hashes: { players: { id: hash } , ... } } – stan ostatniej synchronizacji
+  const readSync = () => {
+    try { const s = JSON.parse(localStorage.getItem(SYNC_KEY)); if (s && s.url === cfg.convex?.url) return s; } catch (e) { /* brak */ }
+    return { url: cfg.convex?.url, cursor: 0, hashes: {} };
+  };
   const writeSync = (s) => localStorage.setItem(SYNC_KEY, JSON.stringify(s));
   const writeLocal = () => localStorage.setItem(STORE_KEY, JSON.stringify(current));
-  const setStatus = (s) => { status = s; listeners.forEach((f) => f({ type: 'status', status })); };
+  const emit = (ev) => listeners.forEach((f) => f(ev));
+  const setStatus = (s) => { if (status !== s) { status = s; emit({ type: 'status', status }); } };
 
   /* Co się zmieniło lokalnie względem ostatniej synchronizacji */
-  function diff(db, synced) {
-    const upserts = {}, deletes = {}, hashes = {};
+  function diff(db, hashes) {
+    const upserts = {}, deletes = {}, now = {};
     let empty = true;
     for (const c of SHARED) {
-      const prev = synced[c] || {};
+      const prev = hashes[c] || {};
       const recs = db[c] || [];
-      hashes[c] = {};
-      upserts[c] = recs.filter((r) => { const h = hashRec(r); hashes[c][r.id] = h; return prev[r.id] !== h; });
-      const ids = new Set(recs.map((r) => r.id));
-      deletes[c] = Object.keys(prev).filter((id) => !ids.has(id));
+      now[c] = {};
+      upserts[c] = recs.filter((r) => { const h = hashRec(r); now[c][r.id] = h; return prev[r.id] !== h; });
+      deletes[c] = Object.keys(prev).filter((id) => !(id in now[c]));
       if (upserts[c].length || deletes[c].length) empty = false;
     }
-    return { upserts, deletes, hashes, empty };
+    return { upserts, deletes, now, empty };
   }
 
   async function push() {
-    if (!adapter) return;
+    if (!adapter || !loaded) return; // najpierw pobierz stan z serwera
     if (pushing) { pushAgain = true; return; }
-    const d = diff(current, readSync());
+    const sync = readSync();
+    const d = diff(current, sync.hashes);
     if (d.empty) return;
     pushing = true;
     setStatus('syncing');
     try {
-      await adapter.push(d);
+      await adapter.push({ upserts: d.upserts, deletes: d.deletes });
       const s = readSync();
       for (const c of SHARED) {
-        s[c] ??= {};
-        for (const r of d.upserts[c]) s[c][r.id] = d.hashes[c][r.id];
-        for (const id of d.deletes[c]) delete s[c][id];
+        s.hashes[c] ??= {};
+        for (const r of d.upserts[c]) s.hashes[c][r.id] = d.now[c][r.id];
+        for (const id of d.deletes[c]) delete s.hashes[c][id];
       }
       writeSync(s);
       lastSync = Date.now();
       setStatus('ok');
     } catch (e) {
-      console.warn('Synchronizacja nieudana – spróbuję ponownie', e);
+      console.warn('Wysyłanie zmian nieudane – ponowię za chwilę', e);
       setStatus('offline');
       clearTimeout(pushTimer);
       pushTimer = setTimeout(push, 15000);
@@ -124,40 +115,49 @@ const Store = (() => {
   }
 
   async function pull() {
-    if (!adapter || document.visibilityState === 'hidden') return;
+    if (!adapter || pulling || (loaded && document.visibilityState === 'hidden')) return;
+    pulling = true;
     try {
-      const remote = await adapter.pullAll();
-      const pending = diff(current, readSync());
+      const sync = readSync();
+      const res = await adapter.pull(sync.cursor);
+      const pending = diff(current, sync.hashes);
       const merged = { ...current };
-      const synced = {};
-      let changed = false;
+      let changed = !loaded;
       for (const c of SHARED) {
-        synced[c] = {};
-        const local = new Map((current[c] || []).map((r) => [r.id, r]));
-        const map = new Map();
-        for (const r of remote[c] || []) {
+        sync.hashes[c] ??= {};
+        const map = new Map((current[c] || []).map((r) => [r.id, r]));
+        const mineUp = new Set(pending.upserts[c].map((r) => r.id));
+        const mineDel = new Set(pending.deletes[c]);
+        for (const r of res.upserts[c] || []) {
+          if (!r || !r.id) continue;
           const h = hashRec(r);
-          synced[c][r.id] = h;
-          const mine = local.get(r.id);
-          // zachowujemy lokalny obiekt, jeśli jest identyczny (aplikacja trzyma do niego referencje)
-          map.set(r.id, mine && hashRec(mine) === h ? mine : r);
-          if (!mine || hashRec(mine) !== h) changed = true;
+          sync.hashes[c][r.id] = h;
+          if (mineUp.has(r.id) || mineDel.has(r.id)) continue; // lokalna zmiana wygrywa
+          const local = map.get(r.id);
+          if (!local || pending.now[c][r.id] !== h) { map.set(r.id, r); changed = true; }
         }
-        for (const r of pending.upserts[c]) map.set(r.id, r);
-        for (const id of pending.deletes[c]) map.delete(id);
-        for (const id of local.keys()) if (!map.has(id)) changed = true;
+        for (const id of res.deletes[c] || []) {
+          delete sync.hashes[c][id];
+          if (mineUp.has(id)) continue;
+          if (map.delete(id)) changed = true;
+        }
         merged[c] = [...map.values()];
       }
-      writeSync(synced);
+      sync.cursor = res.cursor;
+      writeSync(sync);
       current = merged;
       writeLocal();
+      loaded = true;
       lastSync = Date.now();
       setStatus('ok');
-      if (changed) listeners.forEach((f) => f({ type: 'data', db: merged }));
-      if (!pending.empty) push();
+      if (changed) emit({ type: 'data', db: merged });
+      push();
     } catch (e) {
       console.warn('Nie udało się pobrać danych z bazy', e);
       setStatus('offline');
+      if (!loaded) { loaded = true; emit({ type: 'data', db: current }); } // pracuj na kopii lokalnej
+    } finally {
+      pulling = false;
     }
   }
 
@@ -173,20 +173,19 @@ const Store = (() => {
     save(db) {
       current = db;
       writeLocal();
-      if (adapter) { clearTimeout(pushTimer); pushTimer = setTimeout(push, 600); }
+      if (adapter) { clearTimeout(pushTimer); pushTimer = setTimeout(push, 500); }
     },
     /* Start synchronizacji (jeśli baza jest skonfigurowana) */
     init() {
-      const sb = cfg.supabase || {};
-      if (cfg.backend === 'supabase' && sb.url && sb.anonKey) adapter = SupabaseAdapter(sb);
       if (!adapter) return;
       pull();
-      setInterval(pull, Math.max(10, cfg.pollSeconds) * 1000);
+      setInterval(pull, Math.max(5, cfg.pollSeconds) * 1000);
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pull(); });
-      window.addEventListener('online', () => { push(); pull(); });
+      window.addEventListener('online', () => { pull(); });
     },
     onChange(fn) { listeners.push(fn); },
     get remote() { return !!adapter; },
+    get loaded() { return loaded; },
     get status() { return status; },
     get lastSync() { return lastSync; },
     syncNow() { return adapter ? pull() : Promise.resolve(); },

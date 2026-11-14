@@ -28,7 +28,7 @@ function freshDb() {
     players: [], matches: [], games: [], signups: [],
     // tylko na tym urządzeniu
     seasons: [y], season: y, activeId: null, draft: null, lastTeams: { A: 'Biali', B: 'Czarni' },
-    me: null, settings: { organizer: true },
+    me: null, settings: { organizer: !Store.remote },
   };
 }
 let db = Store.load(freshDb);
@@ -149,7 +149,11 @@ function openSheet(html, onMount, onClose) {
     if (closed) return;
     closed = true;
     root.classList.remove('open');
-    setTimeout(() => { if (!root.classList.contains('open')) root.innerHTML = ''; }, 250);
+    setTimeout(() => {
+      if (!root.classList.contains('open')) root.innerHTML = '';
+      // zmiany od innych, które przyszły, gdy okienko było otwarte
+      if (renderPending && !busy()) { renderPending = false; render(); }
+    }, 250);
     onClose?.(val);
   };
   root.querySelector('.sheet-backdrop').onclick = () => close(null);
@@ -245,7 +249,7 @@ function render() {
     } else html = live ? viewLive(live) : viewSetup();
   } else if (view === 'zapisy') {
     const g = id && id !== 'lista' && gameById(id);
-    html = g ? viewGame(g) : viewGames(id === 'lista');
+    html = g ? viewGame(g) : id && id !== 'lista' && !Store.loaded ? loading() : viewGames(id === 'lista');
   } else if (view === 'zaproszenie') html = acceptInvite(id);
   else if (view === 'odpowiedz') html = acceptReply(id);
   else if (view === 'sklady') {
@@ -266,6 +270,7 @@ function render() {
   if (justFinished && id === justFinished) { justFinished = null; confetti(); }
 }
 
+const loading = () => '<div class="empty"><div class="empty-ball">⚽</div><p>Wczytywanie…</p></div>';
 const empty = (text, extra = '') => `<div class="empty"><div class="empty-ball">⚽</div><p>${text}</p>${extra}</div>`;
 
 /* ---------- Nowy mecz ---------- */
@@ -450,7 +455,7 @@ function viewSummary(m) {
       <div class="hero-sep">:</div>
       <div class="hero-team t-B ${winner === 'B' ? 'won' : ''}"><b>${s.B}</b><span>${esc(T.B)}</span></div>
     </div>
-    <div class="hero-result">${winner ? `🏆 Wygrywają ${esc(T[winner])}` : '🤝 Remis'}</div>
+    <div class="hero-result">${m.status === 'live' ? `<span class="live-dot"></span> Na żywo · ${minute(S.duration)}` : winner ? `🏆 Wygrywają ${esc(T[winner])}` : '🤝 Remis'}</div>
     <div class="hero-scorers">
       <div class="t-A">${scorerList('A')}</div>
       <div class="t-B">${scorerList('B')}</div>
@@ -482,10 +487,10 @@ function viewSummary(m) {
     <button type="button" class="btn primary" data-action="share" data-id="${m.id}">📤 Udostępnij</button>
     <a class="btn" href="#/mecz">⚽ Nowy mecz</a>
   </div>
-  <div class="btn-row">
+  ${m.status === 'live' ? '<p class="muted small center">Wynik odświeża się sam co kilkanaście sekund.</p>' : `<div class="btn-row">
     ${isLiveElsewhere ? '' : `<button type="button" class="btn ghost" data-action="reopen" data-id="${m.id}">↺ Wznów mecz</button>`}
     <button type="button" class="btn ghost danger-text" data-action="delete-match" data-id="${m.id}">🗑 Usuń</button>
-  </div>`;
+  </div>`}`;
 }
 
 function shareText(m) {
@@ -505,13 +510,18 @@ function shareText(m) {
 }
 
 /* ---------- Wybór sezonu ---------- */
+const allSeasons = () => [...new Set([...db.seasons, ...db.matches.map((m) => m.season).filter(Boolean)])].sort().reverse();
 function seasonPicker() {
-  const opts = [...db.seasons].sort().reverse();
+  const opts = allSeasons();
   if (!opts.includes(viewSeason) && viewSeason !== 'all') viewSeason = db.season;
   return `<div class="seg">${opts.map((s) => `<button type="button" class="${s === viewSeason ? 'on' : ''}" data-action="view-season" data-season="${esc(s)}">${esc(s)}</button>`).join('')}
     <button type="button" class="${viewSeason === 'all' ? 'on' : ''}" data-action="view-season" data-season="all">Wszystkie</button></div>`;
 }
 const seasonMatches = (season) => db.matches.filter((m) => m.status === 'done' && (season === 'all' || m.season === season));
+
+/* Mecze na żywo prowadzone na innych telefonach (widoczne przy wspólnej bazie) */
+const othersLive = () => db.matches.filter((m) => m.status === 'live' && m.id !== db.activeId && Date.now() - m.startedAt < 6 * 3600e3)
+  .sort((a, b) => b.startedAt - a.startedAt);
 
 /* ---------- Historia ---------- */
 function viewHistory() {
@@ -534,6 +544,8 @@ function viewHistory() {
   ${seasonPicker()}
   ${live ? `<a class="mcard live" href="#/mecz"><div class="mcard-date"><span class="live-dot"></span> Trwa mecz</div>
      <div class="mcard-score"><span class="t-A">${esc(live.teams.A)}</span><b>${score(live).A}:${score(live).B}</b><span class="t-B">${esc(live.teams.B)}</span></div></a>` : ''}
+  ${othersLive().map((m) => `<a class="mcard live" href="#/mecz/${m.id}"><div class="mcard-date"><span class="live-dot"></span> Na żywo · ${minute(elapsed(m))}</div>
+     <div class="mcard-score"><span class="t-A">${esc(m.teams.A)}</span><b>${score(m).A}:${score(m).B}</b><span class="t-B">${esc(m.teams.B)}</span></div></a>`).join('')}
   ${list.length ? list.map(card).join('') : empty('Brak zapisanych meczów w tym sezonie.', '<a class="btn primary" href="#/mecz">Zagraj mecz</a>')}`;
 }
 
@@ -664,8 +676,9 @@ function showPlayerDetail(pid) {
 function viewMore() {
   const apps = appearances();
   const players = [...db.players].sort(byName);
-  const dbStatus = !Store.remote ? '📱 Tylko to urządzenie – wspólna baza nie jest jeszcze podłączona.'
-    : { ok: '🟢 Połączono ze wspólną bazą', syncing: '🔄 Synchronizacja…', offline: '🟠 Brak połączenia – zmiany wyślą się później', local: '…' }[Store.status];
+  const dbStatus = !Store.remote ? '📱 Tylko to urządzenie – wspólna baza nie jest podłączona.'
+    : { ok: '🟢 Połączono ze wspólną bazą', syncing: '🔄 Synchronizacja…', offline: '🟠 Brak połączenia z bazą – zmiany zapisują się na telefonie i wyślą się później', local: '…' }[Store.status]
+      + (Store.lastSync ? ` <span class="muted">(${new Date(Store.lastSync).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })})</span>` : '');
   return `
   <section class="card">
     <h2 class="card-title">Ty</h2>
@@ -683,7 +696,7 @@ function viewMore() {
     <h2 class="card-title">Sezon</h2>
     <p class="muted small">Nowe mecze zapisują się do bieżącego sezonu.</p>
     <div class="inline-form">
-      <select data-change="season" aria-label="Bieżący sezon">${[...db.seasons].sort().reverse().map((s) => `<option ${s === db.season ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
+      <select data-change="season" aria-label="Bieżący sezon">${allSeasons().map((s) => `<option ${s === db.season ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
       <button type="button" class="btn" data-action="new-season">+ Nowy sezon</button>
     </div>
   </section>
@@ -951,6 +964,7 @@ const actions = {
     if (!v) return;
     if (!db.seasons.includes(v)) db.seasons.push(v);
     db.season = v; viewSeason = v;
+    // (sezon z meczów innych osób też trafia na listę)
     save(); render(); toast(`Bieżący sezon: ${v}`);
   },
   async 'rename-player'({ pid }) {
@@ -990,6 +1004,20 @@ const actions = {
     save(); render(); toast('Dane usunięte');
   },
 };
+
+/* Ten sam zawodnik dodany na dwóch telefonach (różne id, to samo imię).
+   Wszystkie telefony wybierają to samo id (najmniejsze), więc dane się zbiegają. */
+function dedupePlayers() {
+  const groups = {};
+  for (const p of db.players) (groups[norm(p.name).toLocaleLowerCase('pl')] ??= []).push(p);
+  let merged = false;
+  for (const list of Object.values(groups)) {
+    if (list.length < 2) continue;
+    const [keep, ...rest] = [...list].sort((a, b) => (a.id < b.id ? -1 : 1));
+    for (const p of rest) { mergePlayers(p.id, keep.id); merged = true; }
+  }
+  if (merged) save();
+}
 
 function mergePlayers(fromId, toId) {
   const remap = (m) => {
@@ -1169,7 +1197,7 @@ render();
 let renderPending = false;
 const busy = () => document.activeElement?.matches?.('input, textarea, select') || $('#sheet').classList.contains('open');
 Store.onChange((ev) => {
-  if (ev.type === 'data') db = ev.db;
+  if (ev.type === 'data') { db = ev.db; dedupePlayers(); }
   else if (route().view !== 'wiecej') return; // status synchronizacji widać tylko w „Więcej”
   if (busy()) { renderPending = true; return; }
   render();
