@@ -71,3 +71,14 @@ export const check = query({
   args: { token: v.optional(v.string()) },
   handler: async (ctx, { token }) => ({ admin: await isAdmin(ctx, token) }),
 });
+
+/* Wylogowanie wszystkich administratorów (np. po zmianie hasła).
+   npx convex run auth:revokeAllSessions */
+export const revokeAllSessions = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("sessions").collect();
+    for (const s of all) await ctx.db.delete(s._id);
+    return { revoked: all.length };
+  },
+});

@@ -18,7 +18,16 @@ Zmiana hasła (w folderze `app/`):
 ```
 npx convex env set ADMIN_PASSWORD "nowe-haslo"
 ```
-Wszystkie istniejące sesje pozostają ważne. Żeby wylogować wszystkich, wyczyść tabelę `sessions` w panelu Convex.
+Zmiana hasła nie wylogowuje osób już zalogowanych. Żeby wylogować wszystkich:
+```
+npx convex run auth:revokeAllSessions
+```
+
+## Wymiana listy zawodników
+Tylko gdy nie ma jeszcze rozegranych meczów (funkcja odmówi, jeśli są):
+```
+npx convex run migrate:replacePlayers '{"names": ["Adam C.", "Bartek K."]}'
+```
 
 ## Wgrywanie zmian w backendzie
 W folderze `app/` z kluczem w `app/.env` (`CONVEX_DEPLOY_KEY=...`, plik nie trafia do gita):

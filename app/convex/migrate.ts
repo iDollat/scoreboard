@@ -74,3 +74,27 @@ export const seasonNames = internalMutation({
     return { matches: changed, settings: !!st };
   },
 });
+
+/* Wymiana całej listy zawodników (np. na start sezonu).
+   Odmawia, jeśli zawodnicy mają rozegrane mecze – historia by się rozsypała.
+   npx convex run migrate:replacePlayers '{"names": ["Adam C.", ...]}' */
+export const replacePlayers = internalMutation({
+  args: { names: v.array(v.string()) },
+  handler: async (ctx, { names }) => {
+    if ((await ctx.db.query("matches").first()) !== null)
+      throw new Error("W bazie są rozegrane mecze – nie usuwam zawodników (użyj zmiany imion / łączenia).");
+    for (const s of await ctx.db.query("signups").collect()) await ctx.db.delete(s._id);
+    for (const g of await ctx.db.query("games").collect())
+      if (g.teams) await ctx.db.patch(g._id, { teams: { ...g.teams, lineup: {} } });
+    const removed = (await ctx.db.query("players").collect()).length;
+    for (const p of await ctx.db.query("players").collect()) await ctx.db.delete(p._id);
+    const added: string[] = [];
+    for (const raw of names) {
+      const name = cleanName(raw);
+      if (!name || added.some((a) => nameKey(a) === nameKey(name))) continue;
+      await ctx.db.insert("players", { name, key: nameKey(name) });
+      added.push(name);
+    }
+    return { removed, added };
+  },
+});
