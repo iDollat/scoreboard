@@ -9,6 +9,7 @@ import { Empty, Loading, Sheet, errorText, useUI } from '../lib/ui';
 import { buzz, gameWhen, plural, shareOrCopy } from '../lib/format';
 import { GameForm } from './Games';
 import SignupPicker from './SignupPicker';
+import { LOCAL_ID, getShadow, isBlockedName, setShadow, shadowSignup } from '../lib/blocked';
 
 type Status = 'in' | 'maybe' | 'out';
 const LABEL: Record<Status, string> = { in: '✅ Gram', maybe: '🤔 Może', out: '❌ Nie gram' };
@@ -16,7 +17,7 @@ const LABEL: Record<Status, string> = { in: '✅ Gram', maybe: '🤔 Może', out
 export default function Game() {
   const { id = '' } = useParams();
   const game = useQuery(api.games.get, { id });
-  const { players, nameOf } = usePlayers();
+  const { players, nameOf: dbName } = usePlayers();
   const { isAdmin, token } = useAdmin();
   const { toast, choose, confirm } = useUI();
   const signup = useMutation(api.games.signup);
@@ -24,21 +25,30 @@ export default function Game() {
   const cancel = useMutation(api.games.cancel);
   const nav = useNavigate();
   const [meId, setMeId] = useState(getMe);
+  const [shadow, setShadowState] = useState(getShadow); // zapis „żartem” – tylko na tym telefonie
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
 
   if (game === undefined) return <Loading />;
   if (game === null || game.status === 'cancelled') return <Empty action={<Link className="btn primary" to="/terminy">Zobacz terminy</Link>}>Ten mecz nie istnieje albo został odwołany.</Empty>;
 
-  const me = meId && players.some((p) => p._id === meId) ? meId : null;
-  const mine = me ? game.signups.find((s) => s.playerId === me) : undefined;
-  const ins = game.signups.filter((s) => s.status === 'in');
+  const realMe = meId && players.some((p) => p._id === meId) ? meId : null;
+  const me = realMe ?? (shadow ? LOCAL_ID : null);
+  const nameOf = (id: string) => (id === LOCAL_ID ? shadow?.name ?? '?' : dbName(id));
+  // lokalny zapis dokładamy do listy tylko na tym telefonie – w bazie go nie ma
+  const local = !realMe && shadow?.games[game._id];
+  const signups = local
+    ? [...game.signups, { _id: LOCAL_ID, playerId: LOCAL_ID, gameId: game._id, status: local.status, by: 'self', at: local.at } as unknown as Doc<'signups'>]
+      .sort((a, b) => a.at - b.at)
+    : game.signups;
+  const mine = me ? signups.find((s) => s.playerId === me) : undefined;
+  const ins = signups.filter((s) => s.status === 'in');
   const limit = game.limit || 0;
   const G = {
     in: limit ? ins.slice(0, limit) : ins,
     reserve: limit ? ins.slice(limit) : [],
-    maybe: game.signups.filter((s) => s.status === 'maybe'),
-    out: game.signups.filter((s) => s.status === 'out'),
+    maybe: signups.filter((s) => s.status === 'maybe'),
+    out: signups.filter((s) => s.status === 'out'),
   };
   const open = game.status === 'open';
   const link = `${location.origin}/terminy/${game._id}`;
@@ -46,16 +56,26 @@ export default function Game() {
   // komplet = kolejne zapisy „gram” trafiają na listę rezerwową
   const full = limit > 0 && G.in.length >= limit;
   const doSignup = async (status: Status, who: { playerId?: string; newName?: string } = { playerId: me ?? undefined }) => {
+    const toastFor = (wasIn: boolean) => toast(status === 'in'
+      ? (full && !wasIn ? '⏳ Jesteś na liście rezerwowej – wskoczysz, gdy ktoś zrezygnuje' : '✅ Zapisano – do zobaczenia na boisku!')
+      : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
+    // nazwa z filtra (np. „Adolf H.”) albo osoba już tak zapisana → zapis tylko w localStorage
+    const [f = '', ...rest] = (who.newName ?? '').split(' ');
+    const localName = who.newName ? (isBlockedName(f, rest.join('')) ? who.newName : null) : who.playerId === LOCAL_ID ? shadow?.name : null;
+    if (localName) {
+      const wasIn = local ? local.status === 'in' : false;
+      setShadowState(shadowSignup(localName, game._id, status)); buzz();
+      toastFor(wasIn);
+      return;
+    }
     try {
       const pid = await signup({
         gameId: game._id, status,
         ...(who.newName ? { name: who.newName, newPlayer: true } : { playerId: who.playerId as Id<'players'> }),
       });
       setMe(pid); setMeId(pid); buzz();
-      const wasIn = game.signups.some((s) => s.playerId === pid && s.status === 'in');
-      toast(status === 'in'
-        ? (full && !wasIn ? '⏳ Jesteś na liście rezerwowej – wskoczysz, gdy ktoś zrezygnuje' : '✅ Zapisano – do zobaczenia na boisku!')
-        : status === 'maybe' ? '🤔 Zapisano jako „może”' : '❌ Zapisano – nie grasz');
+      if (shadow) { setShadow(null); setShadowState(null); }
+      toastFor(game.signups.some((s) => s.playerId === pid && s.status === 'in'));
     } catch (e) { toast('⚠️ ' + errorText(e)); }
   };
 
@@ -63,7 +83,7 @@ export default function Game() {
     {i !== undefined && <span className="srow-n">{i + 1}.</span>}
     <span className="srow-name">{nameOf(s.playerId)}{s.playerId === me && <span className="you">Ty</span>}</span>
     {s.by === 'admin' && <span className="srow-by" title="Dodany przez organizatora">✍</span>}
-    {isAdmin && <button type="button" className="pmore" aria-label="Opcje" onClick={async () => {
+    {isAdmin && s.playerId !== LOCAL_ID && <button type="button" className="pmore" aria-label="Opcje" onClick={async () => {
       const a = await choose(nameOf(s.playerId), 'Zmień zgłoszenie', [
         { label: '✅ Gra', value: 'in' as const }, { label: '🤔 Może', value: 'maybe' as const }, { label: '❌ Nie gra', value: 'out' as const },
         { label: 'Usuń z listy', value: 'remove' as const, cls: 'ghost danger-text' },
@@ -101,7 +121,7 @@ export default function Game() {
 
     {open && (me ? <section className="card me-card">
       <div className="card-head"><h2 className="card-title">Cześć, {nameOf(me)}!</h2>
-        <button type="button" className="link" onClick={() => { setMe(null); setMeId(null); }}>To nie ja</button></div>
+        <button type="button" className="link" onClick={() => { setMe(null); setMeId(null); setShadow(null); setShadowState(null); }}>To nie ja</button></div>
       <p className="muted small">{mine?.status === 'in'
         ? (G.reserve.some((s) => s.playerId === me)
           ? `⏳ Jesteś na liście rezerwowej (${G.reserve.findIndex((s) => s.playerId === me) + 1}. w kolejce). Gdy ktoś zrezygnuje, wskoczysz automatycznie.`
